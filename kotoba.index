@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>わくわく3択穴埋めクイズ！</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/canvas-confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        ruby {
+            ruby-align: center;
+        }
+        rt {
+            font-size: 0.55em;
+            font-weight: 700;
+            color: #4f46e5;
+            user-select: none;
+        }
+        .bounce-in {
+            animation: bounceIn 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+        }
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.08); opacity: 1; }
+            70% { transform: scale(0.95); }
+            100% { transform: scale(1); }
+        }
+        .shake-intense {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0) rotate(-1deg); }
+            20%, 80% { transform: translate3d(4px, 0, 0) rotate(2deg); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0) rotate(-3deg); }
+            40%, 60% { transform: translate3d(6px, 0, 0) rotate(3deg); }
+        }
+        .rainbow-bg {
+            background: linear-gradient(270deg, #ff7eb3, #ff758c, #ff9a44, #f9d423, #a8ff78, #78ffd6, #4facfe, #00f2fe);
+            background-size: 1600% 1600%;
+            animation: rainbow 6s ease infinite;
+        }
+        @keyframes rainbow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .floating-emoji {
+            position: fixed;
+            pointer-events: none;
+            z-index: 100;
+            animation: floatUp 2.2s ease-out forwards;
+        }
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(0.5) rotate(0deg); opacity: 1; }
+            80% { opacity: 1; }
+            100% { transform: translateY(-85vh) scale(1.8) rotate(360deg); opacity: 0; }
+        }
+        .blank-box {
+            display: inline-block;
+            min-width: 110px;
+            padding: 2px 14px;
+            margin: 0 6px;
+            border-bottom: 4px solid #4f46e5;
+            background-color: #eef2ff;
+            color: #4f46e5;
+            font-weight: 900;
+            border-radius: 8px 8px 0 0;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        .blank-box.filled-correct {
+            background-color: #dcfce7;
+            border-bottom-color: #16a34a;
+            color: #15803d;
+            transform: scale(1.08);
+        }
+        .blank-box.filled-wrong {
+            background-color: #fee2e2;
+            border-bottom-color: #dc2626;
+            color: #b91c1c;
+        }
+    </style>
+</head>
+<body class="text-slate-800 transition-colors duration-700" id="app-body">
+
+    <!-- Header / Score Bar -->
+    <header class="bg-white/90 backdrop-blur-md shadow-sm sticky top-0 z-30 border-b border-slate-200">
+        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="text-2xl">🎉</span>
+                <h1 class="text-lg md:text-xl font-black bg-gradient-to-r from-indigo-600 to-pink-500 bg-clip-text text-transparent">
+                    わくわく3択穴埋めクイズ
+                </h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <div id="combo-badge" class="hidden px-3 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white font-black text-sm shadow-sm animate-pulse">
+                    🔥 <span id="combo-count">0</span>問正解！
+                </div>
+                <button onclick="toggleSetupModal()" class="text-xs md:text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-1.5 px-3 rounded-lg border border-slate-300 transition flex items-center gap-1">
+                    <span>📋</span> スプレッドシート読込・編集
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-3xl mx-auto px-4 py-8">
+
+        <!-- Celebration Banner (Appears dynamically on correct answers) -->
+        <div id="celebration-banner" class="hidden mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg transform transition-all">
+            <div class="text-2xl md:text-3xl mb-1" id="celebration-title">🎉 やったね！1問正解！ 🎉</div>
+            <div class="text-sm md:text-base opacity-95" id="celebration-subtitle">クラッカーが弾けたよ！この調子でいこう！</div>
+        </div>
+
+        <!-- Quiz Card -->
+        <div id="quiz-container" class="bg-white rounded-3xl shadow-xl border-2 border-indigo-100 p-6 md:p-8 relative overflow-hidden">
+            
+            <!-- Progress & Status -->
+            <div class="flex items-center justify-between mb-6">
+                <span class="bg-indigo-100 text-indigo-700 font-black px-4 py-1.5 rounded-full text-sm">
+                    だい <span id="current-q-num" class="text-lg">1</span> もん / <span id="total-q-num">10</span>
+                </span>
+                <div class="text-sm font-bold text-slate-500">
+                    せいかい数: <span id="score-display" class="text-xl font-black text-indigo-600">0</span> 問
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-100 h-3 rounded-full mb-8 overflow-hidden">
+                <div id="progress-bar" class="bg-gradient-to-r from-indigo-500 to-pink-500 h-full rounded-full transition-all duration-500" style="width: 10%"></div>
+            </div>
+
+            <!-- Question Box -->
+            <div class="bg-slate-50 rounded-2xl p-6 md:p-8 mb-8 border border-slate-200 shadow-inner">
+                <div id="question-hint" class="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2 hidden"></div>
+                <p id="question-text" class="text-xl md:text-2xl font-bold leading-relaxed text-slate-800">
+                    <!-- Question injected here -->
+                </p>
+            </div>
+
+            <!-- 3 Options -->
+            <div id="options-container" class="grid grid-cols-1 gap-4 mb-6">
+                <!-- Options injected here -->
+            </div>
+
+            <!-- Answer Explanation & Next Button (Hidden until answered) -->
+            <div id="feedback-section" class="hidden mt-6 pt-6 border-t-2 border-dashed border-slate-200 bounce-in">
+                <div id="feedback-box" class="rounded-2xl p-5 mb-6 flex items-start gap-4">
+                    <div id="feedback-icon" class="text-4xl shrink-0">⭕</div>
+                    <div class="flex-1">
+                        <h3 id="feedback-result-title" class="text-xl font-black mb-1">大正解！！</h3>
+                        <p class="text-base font-bold text-slate-700 mb-1">
+                            正解は「<span id="feedback-correct-word" class="text-indigo-600 underline decoration-2"></span>」です！
+                        </p>
+                        <p id="feedback-explanation" class="text-sm text-slate-600 leading-relaxed"></p>
+                    </div>
+                </div>
+
+                <button id="next-btn" onclick="nextQuestion()" class="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black text-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition flex items-center justify-center gap-2">
+                    <span>つぎの問題へすすむ</span>
+                    <span class="text-2xl">➡️</span>
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Final Result Screen -->
+        <div id="result-container" class="hidden bg-white rounded-3xl shadow-2xl border-4 border-amber-300 p-8 text-center bounce-in">
+            <div class="text-6xl mb-4" id="final-emoji">👑</div>
+            <h2 class="text-3xl md:text-4xl font-black text-slate-800 mb-2">クイズ終了！！</h2>
+            <p class="text-lg text-slate-600 font-bold mb-6" id="final-rank-message">すばらしい大活躍でした！</p>
+            
+            <div class="bg-gradient-to-br from-amber-50 to-orange-100 rounded-2xl p-6 mb-8 border border-amber-200 inline-block min-w-[260px]">
+                <div class="text-sm font-bold text-amber-800 mb-1">あなたの最終スコア</div>
+                <div class="text-5xl font-black text-orange-600">
+                    <span id="final-score">0</span> <span class="text-2xl text-slate-600">/ <span id="final-total">10</span> 問正解！</span>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <button onclick="restartQuiz()" class="px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-pink-500 text-white font-black text-lg shadow-lg hover:opacity-95 transition">
+                    🔄 もういちど最初から遊ぶ
+                </button>
+                <button onclick="celebrateFinalEncore()" class="px-8 py-4 rounded-2xl bg-amber-400 hover:bg-amber-500 text-slate-900 font-black text-lg shadow-lg transition">
+                    🎊 お祝い花火をもういちど上げる！
+                </button>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Data Import Modal -->
+    <div id="setup-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 md:p-8 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
+                    <span>📋</span> スプレッドシートのデータを貼り付け
+                </h2>
+                <button onclick="toggleSetupModal()" class="text-slate-400 hover:text-slate-600 text-2xl font-bold">&times;</button>
+            </div>
+
+            <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 mb-4 text-xs md:text-sm text-indigo-950 leading-relaxed">
+                <p class="font-bold mb-1">💡 使い方（スプレッドシートの全データをそのままコピー＆ペーストできます！）</p>
+                <ul class="list-disc list-inside space-y-1 text-slate-700">
+                    <li><strong>単語のみ、または「単語 [タブ] 意味」</strong>を貼り付けると、小学生高学年向けの楽しい穴埋め文と3択を<strong>自動作成</strong>します！</li>
+                    <li><strong>「問題文（[ ]で空欄） [タブ] 正解 [タブ] 選択肢2 [タブ] 選択肢3 [タブ] 解説」</strong>の形式でも読み込めます。</li>
+                </ul>
+            </div>
+
+            <textarea id="raw-data-input" rows="10" class="w-full rounded-xl border-2 border-slate-300 p-3 font-mono text-sm focus:border-indigo-500 focus:outline-none mb-4 flex-1" placeholder="ここにスプレッドシートのセルをすべて選択（Ctrl+A → Ctrl+C）して貼り付け（Ctrl+V）してください..."></textarea>
+
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <button onclick="loadSampleData()" class="text-sm text-indigo-600 hover:underline font-bold">
+                    ✨ 小学生高学年向けおもしろサンプル問題に戻す
+                </button>
+                <div class="flex gap-3">
+                    <button onclick="toggleSetupModal()" class="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 font-bold text-slate-700 text-sm">
+                        キャンセル
+                    </button>
+                    <button onclick="importSpreadsheetData()" class="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 font-black text-white text-sm shadow-md">
+                        このデータで3択クイズを作る！
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Sound Effects via Web Audio API (No external files required) ---
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new AudioCtx();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playCelebrationSound(level) {
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+
+                const bufferSize = audioCtx.sampleRate * 0.12;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.03));
+                }
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+                const gainNoise = audioCtx.createGain();
+                gainNoise.gain.setValueAtTime(Math.min(0.4, 0.15 + level * 0.03), now);
+                noise.connect(gainNoise);
+                gainNoise.connect(audioCtx.destination);
+                noise.start(now);
+
+                const melodies = [
+                    [523.25, 659.25, 783.99],
+                    [523.25, 659.25, 783.99, 1046.50],
+                    [523.25, 587.33, 659.25, 783.99, 1046.50],
+                    [523.25, 659.25, 783.99, 659.25, 1046.50, 1318.51],
+                    [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98, 2093.00]
+                ];
+                const notes = melodies[Math.min(level - 1, melodies.length - 1)];
+
+                notes.forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = level >= 4 ? 'triangle' : 'sine';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.09);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.09);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.09 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.09);
+                    osc.stop(now + idx * 0.09 + 0.35);
+                });
+            } catch (e) {
+                console.warn('Audio playback skipped:', e);
+            }
+        }
+
+        function playWrongSound() {
+            try {
+                initAudio();
+                const now = audioCtx.currentTime;
+                [220, 196].forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.18);
+                    gain.gain.setValueAtTime(0.12, now + idx * 0.18);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.18 + 0.25);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.18);
+                    osc.stop(now + idx * 0.18 + 0.25);
+                });
+            } catch (e) {}
+        }
+
+        // --- Furigana Dictionary for Upper Elementary School & Common Kanji ---
+        const FURIGANA_DICT = {
+            "挙動": "<ruby>挙動<rt>きょどう</rt></ruby>",
+            "気候": "<ruby>気候<rt>きこう</rt></ruby>",
+            "面積": "<ruby>面積<rt>めんせき</rt></ruby>",
+            "習性": "<ruby>習性<rt>しゅうせい</rt></ruby>",
+            "伝統": "<ruby>伝統<rt>でんとう</rt></ruby>",
+            "予算": "<ruby>予算<rt>よさん</rt></ruby>",
+            "混乱": "<ruby>混乱<rt>こんらん</rt></ruby>",
+            "整頓": "<ruby>整頓<rt>せいとん</rt></ruby>",
+            "収穫": "<ruby>収穫<rt>しゅうかく</rt></ruby>",
+            "開催": "<ruby>開催<rt>かいさい</rt></ruby>",
+            "蒸発": "<ruby>蒸発<rt>じょうはつ</rt></ruby>",
+            "遺伝": "<ruby>遺伝<rt>いでん</rt></ruby>",
+            "却下": "<ruby>却下<rt>きゃっか</rt></ruby>",
+            "歓迎": "<ruby>歓迎<rt>かんげい</rt></ruby>",
+            "発酵": "<ruby>発酵<rt>はっこう</rt></ruby>",
+            "格闘": "<ruby>格闘<rt>かくとう</rt></ruby>",
+            "光合成": "<ruby>光合成<rt>こうごうせい</rt></ruby>",
+            "輸出": "<ruby>輸出<rt>ゆしゅつ</rt></ruby>",
+            "爆笑": "<ruby>爆笑<rt>ばくしょう</rt></ruby>",
+            "沈黙": "<ruby>沈黙<rt>ちんもく</rt></ruby>",
+            "乾燥": "<ruby>乾燥<rt>かんそう</rt></ruby>",
+            "劇的": "<ruby>劇的<rt>げきてき</rt></ruby>",
+            "垂直": "<ruby>垂直<rt>すいちょく</rt></ruby>",
+            "透明": "<ruby>透明<rt>とうめい</rt></ruby>",
+            "未知": "<ruby>未知<rt>みち</rt></ruby>",
+            "既読": "<ruby>既読<rt>きどく</rt></ruby>",
+            "往復": "<ruby>往復<rt>おうふく</rt></ruby>",
+            "指名": "<ruby>指名<rt>しめい</rt></ruby>",
+            "充電": "<ruby>充電<rt>じゅうでん</rt></ruby>",
+            "割引": "<ruby>割引<rt>わりびき</rt></ruby>",
+            "工夫": "<ruby>工夫<rt>くふう</rt></ruby>",
+            "観察": "<ruby>観察<rt>かんさつ</rt></ruby>",
+            "発見": "<ruby>発見<rt>はっけん</rt></ruby>",
+            "挑戦": "<ruby>挑戦<rt>ちょうせん</rt></ruby>",
+            "協力": "<ruby>協力<rt>きょうりょく</rt></ruby>",
+            "表現": "<ruby>表現<rt>ひょうげん</rt></ruby>",
+            "想像": "<ruby>想像<rt>そうぞう</rt></ruby>",
+            "習慣": "<ruby>習慣<rt>しゅうかん</rt></ruby>",
+            "目標": "<ruby>目標<rt>もくひょう</rt></ruby>",
+            "感謝": "<ruby>感謝<rt>かんしゃ</rt></ruby>"
+        };
+
+        function addFurigana(text) {
+            if (!text) return '';
+            let result = text;
+            // Replace known kanji terms with ruby tags if they exist in dictionary
+            for (const [kanji, rubyHtml] of Object.entries(FURIGANA_DICT)) {
+                if (result.includes(kanji)) {
+                    result = result.replaceAll(kanji, rubyHtml);
+                }
+            }
+            return result;
+        }
+
+        // --- Default Engaging Questions for Upper Elementary (Grades 5-6) ---
+        const DEFAULT_QUESTIONS = [
+            {
+                sentence: "楽しみにしていた特大プリンが冷蔵庫から消えていた！口のまわりにカラメルをつけている弟は、どう見ても【　？　】があやしい。",
+                correct: "挙動",
+                options: ["挙動", "気候", "面積"],
+                explanation: "「挙動（きょどう）」は、立ち居振る舞いや行動のことです。うそをついてソワソワしている様子を「挙動不審（きょどうふしん）」とも言います。"
+            },
+            {
+                sentence: "うちの猫は、ごはんの袋がカサッと鳴った瞬間、光のようなスピードで走ってくる【　？　】をもっている。",
+                correct: "習性",
+                options: ["習性", "伝統", "予算"],
+                explanation: "「習性（しゅうせい）」は、動物などがもっている決まった行動のクセや性質のことです。"
+            },
+            {
+                sentence: "夏休みの宿題が8月31日にまだ真っ白だと気づいた瞬間、ぼくの頭の中は大【　？　】におちいった。",
+                correct: "混乱",
+                options: ["混乱", "整頓", "収穫"],
+                explanation: "「混乱（こんらん）」は、パニックになって頭や物事がめちゃくちゃに入り乱れてしまうことです。"
+            },
+            {
+                sentence: "給食のからあげが1個あまった！クラス全員の熱い視線が集まるなか、運命のじゃんけん大会が【　？　】された。",
+                correct: "開催",
+                options: ["開催", "蒸発", "遺伝"],
+                explanation: "「開催（かいさい）」は、イベントや大会などを開くことです。"
+            },
+            {
+                sentence: "「テストで100点をとったら、おこづかいを100倍にしてほしい！」と親にたのんだが、3秒で【　？　】された。",
+                correct: "却下",
+                options: ["却下", "歓迎", "発酵"],
+                explanation: "「却下（きゃっか）」は、願い出や提案を「ダメ！」としりぞけて受け入れないことです。"
+            },
+            {
+                sentence: "朝の眠い時間に、ベッドのふとんがぼくを全力で引き止めてくるので、毎朝ふとんとの【　？　】をくり返している。",
+                correct: "格闘",
+                options: ["格闘", "光合成", "輸出"],
+                explanation: "「格闘（かくとう）」は、全力を出して取っ組み合って戦うことです。"
+            },
+            {
+                sentence: "友だちが考えたダジャレがあまりにもおもしろすぎて、教室の空気が一瞬で【　？　】の渦に包まれた。",
+                correct: "爆笑",
+                options: ["爆笑", "沈黙", "乾燥"],
+                explanation: "「爆笑（ばくしょう）」は、大勢の人がどっと大声で笑うことです。"
+            },
+            {
+                sentence: "カレーを作るときに、かくし味としてチョコレートをほんの少し入れると、コクが【　？　】においしくなるらしい。",
+                correct: "劇的",
+                options: ["劇的", "垂直", "透明"],
+                explanation: "「劇的（げきてき）」は、びっくりするほど大きく様子が変わることです。"
+            },
+            {
+                sentence: "宇宙人がほんとうに地球へ遊びに来ているのかどうかは、いまだに多くのなぞに包まれた【　？　】のテーマだ。",
+                correct: "未知",
+                options: ["未知", "既読", "往復"],
+                explanation: "「未知（みち）」は、まだ知られていないこと、これから解明されるかもしれないことです。"
+            },
+            {
+                sentence: "先生に「この問題がわかる人！」と聞かれ、自信満々で手をあげたと思ったら、うっかり背のびをしただけで【　？　】されてしまった。",
+                correct: "指名",
+                options: ["指名", "充電", "割引"],
+                explanation: "「指名（しめい）」は、たくさんの人の中から特定の人を選んで名前を呼ぶことです。"
+            }
+        ];
+
+        const FUN_TEMPLATES = [
+            "昨日の放課後、クラスの友だちと「【　？　】」という言葉を使っておもしろい例文を作るゲームで盛り上がった。",
+            "テレビのクイズ番組を見ていたら、最終問題のカギをにぎるキーワードとして「【　？　】」が登場した！",
+            "お父さんが急にまじめな顔をして、「小学生のうちに『【　？　】』の大切さを知っておくといいぞ」と教えてくれた。",
+            "図書室で見つけたふしぎな大百科を開くと、1ページ目に大きく「【　？　】」について書かれていた。",
+            "宇宙からやってきたロボットに地球のことを教えてあげたら、「【　？　】」という言葉をすごく気に入っていた！",
+            "学校のテストで「【　？　】」に関する問題が出たので、昨日べんきょうした成果をバッチリ発揮できた！"
+        ];
+
+        let questions = [...DEFAULT_QUESTIONS];
+        let currentIndex = 0;
+        let correctCount = 0;
+        let answered = false;
+        let sessionQuestions = [];
+
+        // --- Progressive Celebration System ---
+        function triggerCelebration(count) {
+            playCelebrationSound(count);
+
+            const banner = document.getElementById('celebration-banner');
+            const title = document.getElementById('celebration-title');
+            const subtitle = document.getElementById('celebration-subtitle');
+            const comboBadge = document.getElementById('combo-badge');
+            const comboCount = document.getElementById('combo-count');
+            const body = document.getElementById('app-body');
+
+            comboBadge.classList.remove('hidden');
+            comboCount.textContent = count;
+
+            banner.classList.remove('hidden', 'bounce-in');
+            void banner.offsetWidth;
+            banner.classList.add('bounce-in');
+
+            if (count === 1) {
+                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-emerald-400 to-teal-500 bounce-in";
+                title.textContent = "🎉 1問正解！パーン！！ 🎉";
+                subtitle.textContent = "クラッカーが弾けたよ！まずはナイススタート！";
+
+                confetti({ particleCount: 45, spread: 60, origin: { y: 0.7 } });
+            } else if (count === 2) {
+                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bounce-in";
+                title.textContent = "🎊🎉 2問正解！ダブルクラッカー発動！！ 🎉🎊";
+                subtitle.textContent = "両サイドから紙吹雪だ！どんどん盛り上がってきたぞー！";
+
+                confetti({ particleCount: 65, angle: 60, spread: 55, origin: { x: 0, y: 0.65 } });
+                confetti({ particleCount: 65, angle: 120, spread: 55, origin: { x: 1, y: 0.65 } });
+                spawnFloatingEmojis(['🎉', '🎊', '✨', '👍'], 8);
+            } else if (count === 3) {
+                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-pink-500 via-rose-500 to-orange-500 bounce-in";
+                title.textContent = "🌟🚀 3問正解！キラキラ星シャワーだ！！ 🚀🌟";
+                subtitle.textContent = "すごい集中力！空からスターがふってきたよ！";
+
+                confetti({
+                    particleCount: 100,
+                    spread: 100,
+                    shapes: ['star'],
+                    colors: ['#FFE400', '#FFBD00', '#E89400', '#FFCA6C', '#FDFFB8'],
+                    origin: { y: 0.5 }
+                });
+                spawnFloatingEmojis(['⭐', '🌟', '🚀', '🎯', '👏'], 14);
+            } else if (count === 4) {
+                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-xl bg-gradient-to-r from-amber-500 via-red-500 to-pink-600 bounce-in";
+                title.textContent = "🎆🔥 4問正解！ド迫力・大花火大会！！ 🔥🎆";
+                subtitle.textContent = "誰にも止められない！画面がゆれるほどの大歓声！！";
+
+                document.getElementById('quiz-container').classList.add('shake-intense');
+                setTimeout(() => document.getElementById('quiz-container').classList.remove('shake-intense'), 600);
+
+                for (let i = 0; i < 4; i++) {
+                    setTimeout(() => {
+                        confetti({
+                            particleCount: 80,
+                            startVelocity: 35,
+                            spread: 360,
+                            origin: { x: 0.2 + Math.random() * 0.6, y: 0.2 + Math.random() * 0.4 }
+                        });
+                    }, i * 220);
+                }
+                spawnFloatingEmojis(['🎆', '🔥', '👑', '💯', '🤩', '🎉'], 20);
+            } else {
+                banner.className = "mb-6 p-5 rounded-2xl text-center font-black text-white shadow-2xl rainbow-bg bounce-in border-4 border-yellow-300";
+                title.textContent = `👑🌈 ${count}問正解！！宇宙レベルの超・大祝祭モード！！ 🌈👑`;
+                subtitle.textContent = `すごすぎる天才誕生！！世界中から拍手と花火が止まらないよ！！`;
+
+                body.classList.add('rainbow-bg');
+                setTimeout(() => body.classList.remove('rainbow-bg'), 3500);
+
+                document.getElementById('quiz-container').classList.add('shake-intense');
+                setTimeout(() => document.getElementById('quiz-container').classList.remove('shake-intense'), 600);
+
+                const duration = Math.min(3500, 1200 + count * 300);
+                const end = Date.now() + duration;
+
+                (function frame() {
+                    confetti({ particleCount: 8, angle: 60, spread: 65, origin: { x: 0, y: 0.7 } });
+                    confetti({ particleCount: 8, angle: 120, spread: 65, origin: { x: 1, y: 0.7 } });
+                    if (Date.now() < end) requestAnimationFrame(frame);
+                }());
+
+                spawnFloatingEmojis(['👑', '🏆', '🌈', '🦄', '🎉', '🎊', '💎', '🚀', '💯'], Math.min(40, 18 + count * 4));
+            }
+        }
+
+        function spawnFloatingEmojis(emojiList, count) {
+            for (let i = 0; i < count; i++) {
+                setTimeout(() => {
+                    const el = document.createElement('div');
+                    el.className = 'floating-emoji';
+                    el.textContent = emojiList[Math.floor(Math.random() * emojiList.length)];
+                    el.style.left = (5 + Math.random() * 90) + 'vw';
+                    el.style.bottom = '-40px';
+                    el.style.fontSize = (1.8 + Math.random() * 1.8) + 'rem';
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 2300);
+                }, i * 70);
+            }
+        }
+
+        // --- Quiz Logic ---
+        function shuffleArray(arr) {
+            const copy = [...arr];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        function prepareQuizSession() {
+            const shuffledAll = shuffleArray(questions);
+            const maxCount = Math.min(100, shuffledAll.length);
+            sessionQuestions = shuffledAll.slice(0, maxCount);
+        }
+
+        function renderQuestion() {
+            answered = false;
+            const q = sessionQuestions[currentIndex];
+
+            document.getElementById('current-q-num').textContent = currentIndex + 1;
+            document.getElementById('total-q-num').textContent = sessionQuestions.length;
+            document.getElementById('score-display').textContent = correctCount;
+
+            const progressPercent = ((currentIndex + 1) / sessionQuestions.length) * 100;
+            document.getElementById('progress-bar').style.width = `${progressPercent}%`;
+
+            document.getElementById('feedback-section').classList.add('hidden');
+
+            const hintEl = document.getElementById('question-hint');
+            if (q.hint) {
+                hintEl.textContent = `ヒント: ${q.hint}`;
+                hintEl.classList.remove('hidden');
+            } else {
+                hintEl.classList.add('hidden');
+            }
+
+            // Apply furigana to question sentence
+            const formattedSentence = addFurigana(q.sentence).replace(
+                /【　？　】|\[　\]|\[\s*\]|（　）|\(\s*\)|___+/g,
+                `<span id="sentence-blank" class="blank-box">？</span>`
+            );
+            document.getElementById('question-text').innerHTML = formattedSentence;
+
+            // Render 3 shuffled options with Furigana
+            const optionsContainer = document.getElementById('options-container');
+            optionsContainer.innerHTML = '';
+
+            const shuffledOptions = shuffleArray(q.options);
+            const labels = ['A', 'B', 'C'];
+
+            shuffledOptions.forEach((optText, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "option-btn w-full text-left p-4 md:p-5 rounded-2xl border-2 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/60 bg-white font-bold text-lg md:text-xl text-slate-800 shadow-sm hover:shadow transition flex items-center gap-4 group";
+                
+                // Add furigana to option text
+                const displayedOpt = addFurigana(optText);
+
+                btn.innerHTML = `
+                    <span class="w-10 h-10 rounded-xl bg-indigo-100 group-hover:bg-indigo-600 text-indigo-700 group-hover:text-white font-black flex items-center justify-center shrink-0 transition">
+                        ${labels[idx]}
+                    </span>
+                    <span class="flex-1">${displayedOpt}</span>
+                `;
+                btn.onclick = () => selectAnswer(optText, btn);
+                optionsContainer.appendChild(btn);
+            });
+        }
+
+        function selectAnswer(selectedText, clickedBtn) {
+            if (answered) return;
+            answered = true;
+
+            const q = sessionQuestions[currentIndex];
+            const isCorrect = selectedText === q.correct;
+            const blankEl = document.getElementById('sentence-blank');
+
+            if (blankEl) {
+                blankEl.innerHTML = addFurigana(q.correct);
+                blankEl.classList.add(isCorrect ? 'filled-correct' : 'filled-wrong');
+            }
+
+            const allBtns = document.querySelectorAll('.option-btn');
+            allBtns.forEach(btn => {
+                btn.disabled = true;
+                // Extract plain text to compare against correct answer
+                const rawText = btn.querySelector('span:last-child').textContent;
+                if (q.options.some(opt => opt === selectedText && btn === clickedBtn)) {
+                    // evaluated below
+                }
+                // Check match with correct answer
+                const isThisCorrect = btn.querySelector('span:last-child').innerHTML.includes(q.correct) || rawText.includes(q.correct);
+
+                if (isThisCorrect) {
+                    btn.className = "w-full text-left p-4 md:p-5 rounded-2xl border-3 border-emerald-500 bg-emerald-50 font-black text-lg md:text-xl text-emerald-900 shadow-md flex items-center gap-4";
+                    btn.querySelector('span:first-child').className = "w-10 h-10 rounded-xl bg-emerald-500 text-white font-black flex items-center justify-center shrink-0";
+                    btn.querySelector('span:first-child').textContent = "⭕";
+                } else if (btn === clickedBtn && !isCorrect) {
+                    btn.className = "w-full text-left p-4 md:p-5 rounded-2xl border-2 border-rose-400 bg-rose-50 font-bold text-lg md:text-xl text-rose-900 flex items-center gap-4 opacity-90";
+                    btn.querySelector('span:first-child').className = "w-10 h-10 rounded-xl bg-rose-500 text-white font-black flex items-center justify-center shrink-0";
+                    btn.querySelector('span:first-child').textContent = "❌";
+                } else {
+                    btn.className = "w-full text-left p-4 md:p-5 rounded-2xl border border-slate-200 bg-slate-50 font-bold text-lg md:text-xl text-slate-400 flex items-center gap-4 opacity-60";
+                }
+            });
+
+            const feedbackSection = document.getElementById('feedback-section');
+            const feedbackBox = document.getElementById('feedback-box');
+            const feedbackIcon = document.getElementById('feedback-icon');
+            const feedbackTitle = document.getElementById('feedback-result-title');
+            const feedbackCorrectWord = document.getElementById('feedback-correct-word');
+            const feedbackExplanation = document.getElementById('feedback-explanation');
+
+            feedbackCorrectWord.innerHTML = addFurigana(q.correct);
+            feedbackExplanation.innerHTML = addFurigana(q.explanation || '');
+
+            if (isCorrect) {
+                correctCount++;
+                document.getElementById('score-display').textContent = correctCount;
+
+                feedbackBox.className = "rounded-2xl p-5 mb-6 flex items-start gap-4 bg-emerald-50 border-2 border-emerald-200";
+                feedbackIcon.textContent = "🎉";
+                feedbackTitle.textContent = `大正解！！（${correctCount}問正解！）`;
+                feedbackTitle.className = "text-xl font-black mb-1 text-emerald-700";
+
+                triggerCelebration(correctCount);
+            } else {
+                playWrongSound();
+                document.getElementById('celebration-banner').classList.add('hidden');
+
+                feedbackBox.className = "rounded-2xl p-5 mb-6 flex items-start gap-4 bg-rose-50 border-2 border-rose-200";
+                feedbackIcon.textContent = "💡";
+                feedbackTitle.textContent = "おしい！つぎはきっとできるよ！";
+                feedbackTitle.className = "text-xl font-black mb-1 text-rose-700";
+            }
+
+            const nextBtn = document.getElementById('next-btn');
+            if (currentIndex === sessionQuestions.length - 1) {
+                nextBtn.innerHTML = `<span>けっか発表を見る！</span><span class="text-2xl">🏆</span>`;
+            } else {
+                nextBtn.innerHTML = `<span>つぎの問題へすすむ</span><span class="text-2xl">➡️</span>`;
+            }
+
+            feedbackSection.classList.remove('hidden');
+        }
+
+        function nextQuestion() {
+            if (currentIndex < sessionQuestions.length - 1) {
+                currentIndex++;
+                renderQuestion();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                showFinalResults();
+            }
+        }
+
+        function showFinalResults() {
+            document.getElementById('quiz-container').classList.add('hidden');
+            document.getElementById('result-container').classList.remove('hidden');
+
+            document.getElementById('final-score').textContent = correctCount;
+            document.getElementById('final-total').textContent = sessionQuestions.length;
+
+            const ratio = correctCount / sessionQuestions.length;
+            const emojiEl = document.getElementById('final-emoji');
+            const msgEl = document.getElementById('final-rank-message');
+
+            if (ratio === 1) {
+                emojiEl.textContent = "👑";
+                msgEl.textContent = "全問正解パーフェクト！！伝説のクイズ王誕生だ！！";
+            } else if (ratio >= 0.7) {
+                emojiEl.textContent = "🏆";
+                msgEl.textContent = "すばらしい高得点！！あともう少しでパーフェクト！";
+            } else if (ratio >= 0.4) {
+                emojiEl.textContent = "🌟";
+                msgEl.textContent = "よくがんばったね！復習するとさらにパワーアップできるよ！";
+            } else {
+                emojiEl.textContent = "🌱";
+                msgEl.textContent = "ナイスチャレンジ！もういちど挑戦してクラッカーを鳴らそう！";
+            }
+
+            if (correctCount > 0) {
+                triggerCelebration(Math.max(correctCount, 3));
+            }
+        }
+
+        function celebrateFinalEncore() {
+            triggerCelebration(Math.max(correctCount, 5));
+        }
+
+        function restartQuiz() {
+            currentIndex = 0;
+            correctCount = 0;
+            document.getElementById('combo-badge').classList.add('hidden');
+            document.getElementById('celebration-banner').classList.add('hidden');
+            document.getElementById('result-container').classList.add('hidden');
+            document.getElementById('quiz-container').classList.remove('hidden');
+            prepareQuizSession();
+            renderQuestion();
+        }
+
+        // --- Spreadsheet Paste & Auto-Quiz Builder ---
+        function toggleSetupModal() {
+            const modal = document.getElementById('setup-modal');
+            modal.classList.toggle('hidden');
+        }
+
+        function loadSampleData() {
+            questions = [...DEFAULT_QUESTIONS];
+            toggleSetupModal();
+            restartQuiz();
+        }
+
+        function importSpreadsheetData() {
+            const raw = document.getElementById('raw-data-input').value.trim();
+            if (!raw) {
+                alert('スプレッドシートのデータを貼り付けてください！');
+                return;
+            }
+
+            const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+            const parsedRows = lines.map(line => line.split(/\t|,/).map(cell => cell.trim()).filter(c => c !== ''));
+
+            const allWordsPool = [];
+            parsedRows.forEach(cols => {
+                if (cols[0] && cols[0].length <= 20) allWordsPool.push(cols[0]);
+            });
+            const fallbackDistractors = ["工夫", "観察", "発見", "挑戦", "協力", "表現", "想像", "習慣", "目標", "感謝"];
+
+            const generatedQuestions = [];
+
+            parsedRows.forEach((cols, idx) => {
+                if (idx === 0 && /^(問題|単語|語句|No|番号|question|word)/i.test(cols[0])) {
+                    return;
+                }
+
+                if (cols.length >= 4 && (cols[0].includes('【') || cols[0].includes('[') || cols[0].includes('（') || cols[0].includes('(') || cols[0].includes('_') || cols[0].length > 15)) {
+                    let sentence = cols[0];
+                    const correct = cols[1];
+                    if (sentence.includes(correct)) {
+                        sentence = sentence.replace(correct, '【　？　】');
+                    } else if (!/【　？　】|\[　\]|\[\s*\]|（　）|\(\s*\)|___+/.test(sentence)) {
+                        sentence = sentence + ' 【　？　】';
+                    }
+                    generatedQuestions.push({
+                        sentence: sentence,
+                        correct: correct,
+                        options: [correct, cols[2], cols[3]],
+                        explanation: cols[4] || `正解は「${correct}」です！`
+                    });
+                } else if (cols.length >= 2) {
+                    const first = cols[0];
+                    const second = cols[1];
+                    const third = cols[2] || '';
+
+                    let word = first;
+                    let desc = second;
+                    if (first.length > second.length && second.length <= 15) {
+                        word = second;
+                        desc = first;
+                    }
+
+                    let sentence = '';
+                    let explanation = '';
+
+                    if (desc.includes(word)) {
+                        sentence = desc.replace(word, '【　？　】');
+                        explanation = third || `空欄に入るのは「${word}」です。`;
+                    } else {
+                        sentence = `「${desc}」という意味を表す言葉は【　？　】です。`;
+                        explanation = third ? `${third}（正解：${word}）` : `「${word}」は「${desc}」という意味の言葉です。`;
+                    }
+
+                    const otherWords = allWordsPool.filter(w => w !== word);
+                    const pool = otherWords.length >= 2 ? otherWords : [...otherWords, ...fallbackDistractors.filter(w => w !== word)];
+                    const shuffledPool = shuffleArray(pool);
+
+                    generatedQuestions.push({
+                        sentence: sentence,
+                        correct: word,
+                        options: [word, shuffledPool[0], shuffledPool[1]],
+                        explanation: explanation
+                    });
+                } else if (cols.length === 1) {
+                    const word = cols[0];
+                    const template = FUN_TEMPLATES[idx % FUN_TEMPLATES.length];
+                    const otherWords = allWordsPool.filter(w => w !== word);
+                    const pool = otherWords.length >= 2 ? otherWords : [...otherWords, ...fallbackDistractors.filter(w => w !== word)];
+                    const shuffledPool = shuffleArray(pool);
+
+                    generatedQuestions.push({
+                        sentence: template,
+                        correct: word,
+                        options: [word, shuffledPool[0], shuffledPool[1]],
+                        explanation: `正解は「${word}」でした！しっかり意味も確認しておこう！`
+                    });
+                }
+            });
+
+            if (generatedQuestions.length === 0) {
+                alert('有効なデータを読み込めませんでした。');
+                return;
+            }
+
+            questions = generatedQuestions;
+            toggleSetupModal();
+            restartQuiz();
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            restartQuiz();
+        });
+    </script>
+</body>
+</html>
