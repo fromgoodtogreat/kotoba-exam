@@ -116,7 +116,7 @@
         <!-- Celebration Banner (Appears dynamically on correct answers) -->
         <div id="celebration-banner" class="hidden mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg transform transition-all">
             <div class="text-2xl md:text-3xl mb-1" id="celebration-title">🎉 やったね！1問正解！ 🎉</div>
-            <div class="text-sm md:text-base opacity-95" id="celebration-subtitle">クラッカーが弾けたよ！この調子でいこう！</div>
+            <div class="text-sm md:text-base opacity-95" id="celebration-subtitle">まずはナイススタート！</div>
         </div>
 
         <!-- Quiz Card -->
@@ -353,10 +353,12 @@
         function addFurigana(text) {
             if (!text) return '';
             let result = text;
-            // Replace known kanji terms with ruby tags if they exist in dictionary
-            for (const [kanji, rubyHtml] of Object.entries(FURIGANA_DICT)) {
+            const combinedDict = { ...FURIGANA_DICT, ...dynamicFuriganaDict };
+            // 長い単語から順に変換し、意図しない部分的な置き換えを防ぎます
+            const sortedKeys = Object.keys(combinedDict).sort((a, b) => b.length - a.length);
+            for (const kanji of sortedKeys) {
                 if (result.includes(kanji)) {
-                    result = result.replaceAll(kanji, rubyHtml);
+                    result = result.replaceAll(kanji, combinedDict[kanji]);
                 }
             }
             return result;
@@ -436,6 +438,8 @@
         ];
 
         let questions = [...DEFAULT_QUESTIONS];
+        let availableQuestions = [];
+        let dynamicFuriganaDict = {};
         let currentIndex = 0;
         let correctCount = 0;
         let answered = false;
@@ -459,73 +463,85 @@
             void banner.offsetWidth;
             banner.classList.add('bounce-in');
 
-            if (count === 1) {
-                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-emerald-400 to-teal-500 bounce-in";
-                title.textContent = "🎉 1問正解！パーン！！ 🎉";
-                subtitle.textContent = "クラッカーが弾けたよ！まずはナイススタート！";
+            try {
+                if (count === 1) {
+                    banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-emerald-400 to-teal-500 bounce-in";
+                    title.textContent = "🎉 1問正解！やったね！！ 🎉";
+                    subtitle.textContent = "まずはナイススタート！";
 
-                confetti({ particleCount: 45, spread: 60, origin: { y: 0.7 } });
-            } else if (count === 2) {
-                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bounce-in";
-                title.textContent = "🎊🎉 2問正解！ダブルクラッカー発動！！ 🎉🎊";
-                subtitle.textContent = "両サイドから紙吹雪だ！どんどん盛り上がってきたぞー！";
+                    if (typeof confetti !== 'undefined') confetti({ particleCount: 45, spread: 60, origin: { y: 0.7 } });
+                } else if (count === 2) {
+                    banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 bounce-in";
+                    title.textContent = "🎊🎉 2問正解！連続正解だ！！ 🎉🎊";
+                    subtitle.textContent = "両サイドからお祝いだ！どんどん盛り上がってきたぞー！";
 
-                confetti({ particleCount: 65, angle: 60, spread: 55, origin: { x: 0, y: 0.65 } });
-                confetti({ particleCount: 65, angle: 120, spread: 55, origin: { x: 1, y: 0.65 } });
-                spawnFloatingEmojis(['🎉', '🎊', '✨', '👍'], 8);
-            } else if (count === 3) {
-                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-pink-500 via-rose-500 to-orange-500 bounce-in";
-                title.textContent = "🌟🚀 3問正解！キラキラ星シャワーだ！！ 🚀🌟";
-                subtitle.textContent = "すごい集中力！空からスターがふってきたよ！";
+                    if (typeof confetti !== 'undefined') {
+                        confetti({ particleCount: 65, angle: 60, spread: 55, origin: { x: 0, y: 0.65 } });
+                        confetti({ particleCount: 65, angle: 120, spread: 55, origin: { x: 1, y: 0.65 } });
+                    }
+                    spawnFloatingEmojis(['🎉', '🎊', '✨', '👍'], 8);
+                } else if (count === 3) {
+                    banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-lg bg-gradient-to-r from-pink-500 via-rose-500 to-orange-500 bounce-in";
+                    title.textContent = "🌟🚀 3問正解！キラキラ星シャワーだ！！ 🚀🌟";
+                    subtitle.textContent = "すごい集中力！空からスターがふってきたよ！";
 
-                confetti({
-                    particleCount: 100,
-                    spread: 100,
-                    shapes: ['star'],
-                    colors: ['#FFE400', '#FFBD00', '#E89400', '#FFCA6C', '#FDFFB8'],
-                    origin: { y: 0.5 }
-                });
-                spawnFloatingEmojis(['⭐', '🌟', '🚀', '🎯', '👏'], 14);
-            } else if (count === 4) {
-                banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-xl bg-gradient-to-r from-amber-500 via-red-500 to-pink-600 bounce-in";
-                title.textContent = "🎆🔥 4問正解！ド迫力・大花火大会！！ 🔥🎆";
-                subtitle.textContent = "誰にも止められない！画面がゆれるほどの大歓声！！";
-
-                document.getElementById('quiz-container').classList.add('shake-intense');
-                setTimeout(() => document.getElementById('quiz-container').classList.remove('shake-intense'), 600);
-
-                for (let i = 0; i < 4; i++) {
-                    setTimeout(() => {
+                    if (typeof confetti !== 'undefined') {
                         confetti({
-                            particleCount: 80,
-                            startVelocity: 35,
-                            spread: 360,
-                            origin: { x: 0.2 + Math.random() * 0.6, y: 0.2 + Math.random() * 0.4 }
+                            particleCount: 100,
+                            spread: 100,
+                            shapes: ['star'],
+                            colors: ['#FFE400', '#FFBD00', '#E89400', '#FFCA6C', '#FDFFB8'],
+                            origin: { y: 0.5 }
                         });
-                    }, i * 220);
+                    }
+                    spawnFloatingEmojis(['⭐', '🌟', '🚀', '🎯', '👏'], 14);
+                } else if (count === 4) {
+                    banner.className = "mb-6 p-4 rounded-2xl text-center font-black text-white shadow-xl bg-gradient-to-r from-amber-500 via-red-500 to-pink-600 bounce-in";
+                    title.textContent = "🎆🔥 4問正解！ド迫力・大花火大会！！ 🔥🎆";
+                    subtitle.textContent = "誰にも止められない！画面がゆれるほどの大歓声！！";
+
+                    document.getElementById('quiz-container').classList.add('shake-intense');
+                    setTimeout(() => document.getElementById('quiz-container').classList.remove('shake-intense'), 600);
+
+                    if (typeof confetti !== 'undefined') {
+                        for (let i = 0; i < 4; i++) {
+                            setTimeout(() => {
+                                confetti({
+                                    particleCount: 80,
+                                    startVelocity: 35,
+                                    spread: 360,
+                                    origin: { x: 0.2 + Math.random() * 0.6, y: 0.2 + Math.random() * 0.4 }
+                                });
+                            }, i * 220);
+                        }
+                    }
+                    spawnFloatingEmojis(['🎆', '🔥', '👑', '💯', '🤩', '🎉'], 20);
+                } else {
+                    banner.className = "mb-6 p-5 rounded-2xl text-center font-black text-white shadow-2xl rainbow-bg bounce-in border-4 border-yellow-300";
+                    title.textContent = `👑🌈 ${count}問正解！！宇宙レベルの超・大祝祭モード！！ 🌈👑`;
+                    subtitle.textContent = `すごすぎる天才誕生！！世界中から拍手と花火が止まらないよ！！`;
+
+                    body.classList.add('rainbow-bg');
+                    setTimeout(() => body.classList.remove('rainbow-bg'), 3500);
+
+                    document.getElementById('quiz-container').classList.add('shake-intense');
+                    setTimeout(() => document.getElementById('quiz-container').classList.remove('shake-intense'), 600);
+
+                    const duration = Math.min(3500, 1200 + count * 300);
+                    const end = Date.now() + duration;
+
+                    if (typeof confetti !== 'undefined') {
+                        (function frame() {
+                            confetti({ particleCount: 8, angle: 60, spread: 65, origin: { x: 0, y: 0.7 } });
+                            confetti({ particleCount: 8, angle: 120, spread: 65, origin: { x: 1, y: 0.7 } });
+                            if (Date.now() < end) requestAnimationFrame(frame);
+                        }());
+                    }
+
+                    spawnFloatingEmojis(['👑', '🏆', '🌈', '🦄', '🎉', '🎊', '💎', '🚀', '💯'], Math.min(40, 18 + count * 4));
                 }
-                spawnFloatingEmojis(['🎆', '🔥', '👑', '💯', '🤩', '🎉'], 20);
-            } else {
-                banner.className = "mb-6 p-5 rounded-2xl text-center font-black text-white shadow-2xl rainbow-bg bounce-in border-4 border-yellow-300";
-                title.textContent = `👑🌈 ${count}問正解！！宇宙レベルの超・大祝祭モード！！ 🌈👑`;
-                subtitle.textContent = `すごすぎる天才誕生！！世界中から拍手と花火が止まらないよ！！`;
-
-                body.classList.add('rainbow-bg');
-                setTimeout(() => body.classList.remove('rainbow-bg'), 3500);
-
-                document.getElementById('quiz-container').classList.add('shake-intense');
-                setTimeout(() => document.getElementById('quiz-container').classList.remove('shake-intense'), 600);
-
-                const duration = Math.min(3500, 1200 + count * 300);
-                const end = Date.now() + duration;
-
-                (function frame() {
-                    confetti({ particleCount: 8, angle: 60, spread: 65, origin: { x: 0, y: 0.7 } });
-                    confetti({ particleCount: 8, angle: 120, spread: 65, origin: { x: 1, y: 0.7 } });
-                    if (Date.now() < end) requestAnimationFrame(frame);
-                }());
-
-                spawnFloatingEmojis(['👑', '🏆', '🌈', '🦄', '🎉', '🎊', '💎', '🚀', '💯'], Math.min(40, 18 + count * 4));
+            } catch (err) {
+                console.error("Celebration script error:", err);
             }
         }
 
@@ -555,9 +571,12 @@
         }
 
         function prepareQuizSession() {
-            const shuffledAll = shuffleArray(questions);
-            const maxCount = Math.min(100, shuffledAll.length);
-            sessionQuestions = shuffledAll.slice(0, maxCount);
+            // 未出題の問題が10問未満になったら、全問題を再度シャッフルして補充します
+            if (availableQuestions.length < 10) {
+                availableQuestions = shuffleArray(questions);
+            }
+            // プールから先頭の10問を取り出して今回のクイズに出題します
+            sessionQuestions = availableQuestions.splice(0, 10);
         }
 
         function renderQuestion() {
@@ -753,6 +772,7 @@
 
         function loadSampleData() {
             questions = [...DEFAULT_QUESTIONS];
+            availableQuestions = []; // 出題プールをリセット
             toggleSetupModal();
             restartQuiz();
         }
@@ -768,8 +788,16 @@
             const parsedRows = lines.map(line => line.split(/\t|,/).map(cell => cell.trim()).filter(c => c !== ''));
 
             const allWordsPool = [];
+            dynamicFuriganaDict = {}; // 読み込んだデータから新しい辞書を作る
+
             parsedRows.forEach(cols => {
-                if (cols[0] && cols[0].length <= 20) allWordsPool.push(cols[0]);
+                if (cols[0] && cols[0].length <= 20) {
+                    allWordsPool.push(cols[0]);
+                    // 2列目がひらがなのみの場合、自動的にふりがな辞書に登録します
+                    if (cols.length >= 2 && /^[ぁ-んァ-ヶー]+$/.test(cols[1])) {
+                        dynamicFuriganaDict[cols[0]] = `<ruby>${cols[0]}<rt>${cols[1]}</rt></ruby>`;
+                    }
+                }
             });
             const fallbackDistractors = ["工夫", "観察", "発見", "挑戦", "協力", "表現", "想像", "習慣", "目標", "感謝"];
 
@@ -796,13 +824,18 @@
                     });
                 } else if (cols.length >= 2) {
                     const first = cols[0];
-                    const second = cols[1];
-                    const third = cols[2] || '';
-
                     let word = first;
-                    let desc = second;
-                    if (first.length > second.length && second.length <= 15) {
-                        word = second;
+                    let desc = cols[1];
+                    let third = cols[2] || '';
+
+                    // 2列目が読み（ひらがな）の場合は、3列目を意味として扱うようシフトします
+                    if (/^[ぁ-んァ-ヶー]+$/.test(cols[1]) && cols.length >= 3) {
+                        desc = cols[2];
+                        third = cols[3] || '';
+                    }
+
+                    if (first.length > desc.length && desc.length <= 15) {
+                        word = desc;
                         desc = first;
                     }
 
@@ -849,6 +882,7 @@
             }
 
             questions = generatedQuestions;
+            availableQuestions = []; // 新しい問題セットになったので出題プールをリセット
             toggleSetupModal();
             restartQuiz();
         }
