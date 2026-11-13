@@ -4,162 +4,923 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>わくわく3択穴埋めクイズ</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- ふりがな生成ライブラリ (Kuroshiro / Kuromoji) -->
+    <!-- ふりがな生成ライブラリ (Kuroshiro & Kuromoji) -->
     <script src="https://cdn.jsdelivr.net/npm/kuroshiro@1.2.0/dist/kuroshiro.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/kuroshiro-analyzer-kuromoji@1.1.0/dist/kuroshiro-analyzer-kuromoji.min.js"></script>
-    <!-- Canvas Confetti (お祝いアニメーション) -->
+    <!-- お祝い紙吹雪ライブラリ (Canvas Confetti) -->
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
-        body { font-family: 'Hiragino Maru Gothic ProN', 'Rounded M+ 1c', 'Meiryo', sans-serif; }
-        ruby { ruby-align: center; }
-        rt { font-size: 0.6em; color: #555; }
-        .hidden { display: none !important; }
+        body {
+            font-family: 'Hiragino Maru Gothic ProN', 'Rounded M+ 1c', 'Yu Gothic', 'Meiryo', sans-serif;
+            user-select: none;
+        }
+        ruby {
+            ruby-align: center;
+        }
+        rt {
+            font-size: 0.6em;
+            color: #4b5563;
+            font-weight: normal;
+        }
+        .choice-btn rt {
+            color: inherit;
+            opacity: 0.85;
+        }
+        .blank-box {
+            display: inline-block;
+            background-color: #fef08a;
+            color: #d97706;
+            border: 2px dashed #f59e0b;
+            border-radius: 0.5rem;
+            padding: 0.05rem 0.5rem;
+            margin: 0 0.2rem;
+            font-weight: 900;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.9); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+        @keyframes screenShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px) rotate(-0.5deg); }
+            40%, 80% { transform: translateX(6px) rotate(0.5deg); }
+        }
+        .shake-effect {
+            animation: screenShake 0.4s ease-in-out;
+        }
     </style>
 </head>
-<body class="bg-blue-50 text-gray-800 min-h-screen p-4 flex flex-col items-center">
+<body class="bg-gradient-to-b from-blue-50 to-indigo-100 text-gray-800 min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
 
-    <!-- ここから各種画面のUI（これまでと同じデザイン） -->
-    <div id="loading-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 text-center mt-10">
-        <h1 class="text-2xl font-bold text-blue-600 mb-4">🚀 準備中...</h1>
-        <p id="loading-text" class="text-gray-600">スプレッドシートからデータを取得しています<br>（最初だけ少し時間がかかります）</p>
-        <div id="loading-error" class="text-red-500 font-bold mt-4 hidden"></div>
+    <!-- 1. ローディング画面 -->
+    <div id="loading-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 text-center">
+        <div class="animate-bounce text-5xl mb-4">📚</div>
+        <h1 class="text-2xl font-bold text-blue-600 mb-3">
+            <ruby>問題<rt>もんだい</rt></ruby>を<ruby>準備<rt>じゅんび</rt></ruby>しています...
+        </h1>
+        <p id="loading-status" class="text-gray-600 mb-4">
+            「words.json」とふりがな<ruby>辞書<rt>じしょ</rt></ruby>を<ruby>読<rt>よ</rt></ruby>み<ruby>込<rt>こ</rt></ruby>み<ruby>中<rt>ちゅう</rt></ruby>です
+        </p>
+        <div class="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
+            <div id="loading-bar" class="bg-blue-500 h-3 rounded-full transition-all duration-300" style="width: 20%"></div>
+        </div>
+        <div id="loading-error" class="hidden bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl text-left text-sm mt-4"></div>
     </div>
 
-    <!-- メインのクイズコンテナ -->
-    <div id="quiz-container" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-6 md:p-8 hidden">
-        <div class="flex justify-between items-center mb-6 border-b pb-4">
-            <h1 class="text-2xl md:text-3xl font-bold text-blue-600">わくわく3択穴埋めクイズ</h1>
-            <div class="text-lg font-bold text-orange-500">🔥 <span id="score-display">0</span>問正解！</div>
+    <!-- 2. メインのクイズ画面 -->
+    <div id="quiz-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-6 md:p-8 hidden">
+        <!-- ヘッダー -->
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-6 border-b-2 border-blue-100 pb-4">
+            <h1 class="text-xl md:text-2xl font-extrabold text-blue-600">
+                わくわく3<ruby>択<rt>たく</rt></ruby><ruby>穴埋<rt>あなう</rt></ruby>めクイズ
+            </h1>
+            <div class="flex items-center gap-3">
+                <span class="text-xs bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full">
+                    <ruby>全<rt>ぜん</rt></ruby><span id="total-pool-count">0</span><ruby>語<rt>ご</rt></ruby><ruby>収録<rt>しゅうろく</rt></ruby>
+                </span>
+                <div class="bg-orange-100 text-orange-600 font-extrabold px-4 py-1.5 rounded-full text-base md:text-lg shadow-sm">
+                    🔥 <span id="score-display">0</span><ruby>問<rt>もん</rt></ruby><ruby>正解<rt>せいかい</rt></ruby>！
+                </div>
+            </div>
         </div>
 
-        <div id="question-area">
-            <div class="mb-4 text-sm font-bold text-gray-500">だい <span id="current-q-num">1</span> もん / 10</div>
-            <div id="question-text" class="text-xl md:text-2xl font-bold leading-relaxed mb-8 bg-blue-100 p-6 rounded-2xl border-2 border-blue-200">
-                <!-- 問題文が入る -->
-            </div>
-            <div id="choices-container" class="flex flex-col gap-4">
-                <!-- 選択肢ボタンが入る -->
-            </div>
+        <!-- 進捗バーと問題番号 -->
+        <div class="flex justify-between items-center mb-2 text-sm font-bold text-gray-500">
+            <div>だい <span id="current-q-num" class="text-blue-600 text-lg">1</span> もん / <span id="max-q-num">10</span></div>
+            <div><ruby>未出題<rt>みしゅつだい</rt></ruby>プール: <span id="remaining-pool-count">0</span><ruby>問<rt>もん</rt></ruby></div>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-2.5 mb-6">
+            <div id="quiz-progress-bar" class="bg-blue-500 h-2.5 rounded-full transition-all duration-300" style="width: 10%"></div>
         </div>
 
-        <div id="result-area" class="hidden mt-8 text-center">
-            <div id="result-icon" class="text-6xl mb-4"></div>
-            <h2 id="result-title" class="text-3xl font-bold mb-4"></h2>
-            <div class="bg-gray-100 p-6 rounded-2xl text-left mb-6">
-                <p class="font-bold text-lg mb-2 text-blue-800">【正解】 <span id="result-correct-word" class="text-2xl text-red-600"></span></p>
-                <p class="font-bold text-gray-700 mt-4 mb-1">■ 意味・解説：</p>
-                <p id="result-explanation" class="text-gray-800 leading-relaxed"></p>
+        <!-- 問題文エリア -->
+        <div id="question-box" class="text-lg md:text-2xl font-bold leading-loose mb-8 bg-blue-50/80 p-6 rounded-2xl border-2 border-blue-200 shadow-inner">
+            <div id="question-type-badge" class="inline-block text-xs font-bold bg-indigo-500 text-white px-2.5 py-1 rounded-md mb-3"></div>
+            <p id="question-text" class="text-gray-800 leading-loose"></p>
+        </div>
+
+        <!-- 3択ボタンエリア -->
+        <div id="choices-container" class="flex flex-col gap-4"></div>
+
+        <!-- 解答・解説表示エリア（選択後に表示） -->
+        <div id="explanation-area" class="hidden mt-8 pt-6 border-t-2 border-dashed border-gray-200 text-center animate-pop">
+            <div class="flex items-center justify-center gap-3 mb-4">
+                <span id="result-icon" class="text-4xl md:text-5xl"></span>
+                <h2 id="result-title" class="text-2xl md:text-3xl font-extrabold"></h2>
             </div>
-            <button id="next-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-8 rounded-full text-xl shadow-lg transition transform hover:scale-105">
-                つぎの問題へすすむ ➡️
+
+            <div class="bg-amber-50 border-2 border-amber-200 p-5 rounded-2xl text-left mb-6 shadow-sm">
+                <p class="font-bold text-base md:text-lg mb-3 text-gray-700">
+                    【<ruby>正解<rt>せいかい</rt></ruby>】
+                    <span id="correct-word-display" class="text-2xl md:text-3xl font-extrabold text-red-600 ml-2 leading-relaxed"></span>
+                </p>
+                <div class="bg-white p-4 rounded-xl border border-amber-100 space-y-3">
+                    <div>
+                        <p class="font-bold text-sm text-indigo-600 mb-1">■ <ruby>意味<rt>いみ</rt></ruby>・<ruby>解説<rt>かいせつ</rt></ruby>：</p>
+                        <p id="explanation-meaning" class="text-base md:text-lg text-gray-800 leading-loose font-medium"></p>
+                    </div>
+                    <div id="explanation-example-box" class="pt-3 border-t border-gray-100 hidden">
+                        <p class="font-bold text-sm text-emerald-600 mb-1">■ <ruby>例文<rt>れいぶん</rt></ruby>：</p>
+                        <p id="explanation-example" class="text-base md:text-lg text-gray-700 leading-loose"></p>
+                    </div>
+                </div>
+            </div>
+
+            <button id="next-btn" type="button" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold py-4 px-8 rounded-2xl text-xl shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer">
+                つぎの<ruby>問題<rt>もんだい</rt></ruby>へすすむ ➡️
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. 最終結果画面（10問終了後） -->
+    <div id="final-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 text-center hidden animate-pop">
+        <div class="text-6xl mb-4">👑</div>
+        <h2 class="text-3xl font-extrabold text-blue-600 mb-2">
+            クイズ<ruby>終了<rt>しゅうりょう</rt></ruby>！！
+        </h2>
+        <p id="final-message" class="text-lg text-gray-600 font-bold mb-6 leading-relaxed"></p>
+
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-orange-200 rounded-2xl p-6 mb-8">
+            <p class="text-sm font-bold text-gray-500 mb-1">あなたの<ruby>最終<rt>さいしゅう</rt></ruby>スコア</p>
+            <p class="text-4xl md:text-5xl font-black text-orange-500">
+                <span id="final-score">0</span> / <span id="final-max">10</span> <ruby>問<rt>もん</rt></ruby><ruby>正解<rt>せいかい</rt></ruby>！
+            </p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <button id="retry-btn" type="button" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-4 px-6 rounded-2xl text-lg shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer">
+                🔄 もういちど<ruby>新<rt>あたら</rt></ruby>しい10<ruby>問<rt>もん</rt></ruby>であそぶ
+            </button>
+            <button id="replay-celebration-btn" type="button" class="bg-amber-400 hover:bg-amber-500 text-gray-900 font-extrabold py-4 px-6 rounded-2xl text-lg shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer">
+                🎊 <ruby>花火<rt>はなび</rt></ruby>をもういちど<ruby>上<rt>あ</rt></ruby>げる
             </button>
         </div>
     </div>
 
     <script>
-        // 🌟 【設定】ウェブに公開したCSVのURLをここに貼り付けます
-        // 「ファイル」>「共有」>「ウェブに公開」>「カンマ区切り(.csv)」で発行されたURLです
-        const SPREADSHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1iYSUsUTLzI3jnmoUrPy4ci_zehj7-l0Np7hbErezLqQ/edit?usp=sharing"; 
+        // ==========================================
+        // グローバル変数・状態管理
+        // ==========================================
+        const QUESTIONS_PER_ROUND = 10;
+        let allWordsPool = [];        // words.jsonから読み込んだ全データ
+        let unusedIndices = [];       // 未出題のインデックスリスト（重複防止用）
+        let currentQuizSet = [];      // 現在の10問セット
+        let currentQuestionIndex = 0; // 現在の問題番号 (0〜9)
+        let currentScore = 0;         // 現在の正解数
+        let kuroshiroObj = null;      // ふりがなエンジン (Kuroshiro)
+        let customRubyDict = new Map(); // words.jsonの括弧書きから抽出した読み辞書
+        let audioCtx = null;          // Web Audio API
+
+        // 面白い導入フレーズ（意味から出題する場合や、例文に単語が含まれない場合用）
+        const FUN_SITUATIONS = [
+            "名探偵が事件解決のヒントを見つけたよ！",
+            "宇宙船のキャプテンから通信が入ったぞ！",
+            "魔法学校の試験にこんな問題が出たよ！",
+            "冒険の書に大事な言葉が記されている！",
+            "クイズ王決定戦のスペシャル問題だ！",
+            "発明家の博士がうなずきながら言ったよ！"
+        ];
 
         // ==========================================
-        // 以降はシステムのプログラムコードです
+        // 1. アプリ初期化処理
         // ==========================================
-        let allWordsData = [];
-        let currentQuizList = [];
-        let currentQuestionIndex = 0;
-        let score = 0;
-        let kuroshiro = null;
-
-        const loadingScreen = document.getElementById('loading-screen');
-        const loadingText = document.getElementById('loading-text');
-        const loadingError = document.getElementById('loading-error');
-        const quizContainer = document.getElementById('quiz-container');
-
-        // アプリの初期化
         async function initApp() {
+            const loadingStatus = document.getElementById('loading-status');
+            const loadingBar = document.getElementById('loading-bar');
+            const loadingError = document.getElementById('loading-error');
+
             try {
-                loadingText.innerText = "データを読み込んでいます...";
-                
-                if (SPREADSHEET_CSV_URL === "ここにURLを貼り付けてください") {
-                    throw new Error("CSVのURLが設定されていません。コード内の SPREADSHEET_CSV_URL を設定してください。");
+                // ステップ1: words.json の読み込み
+                loadingStatus.innerHTML = '「words.json」から<ruby>語彙<rt>ごい</rt></ruby>データを<ruby>読<rt>よ</rt></ruby>み<ruby>込<rt>こ</rt></ruby>んでいます...';
+                loadingBar.style.width = '40%';
+
+                const response = await fetch('./words.json', { cache: 'no-cache' });
+                if (!response.ok) {
+                    throw new Error(`words.json の読み込みに失敗しました (HTTP ${response.status})。index.html と同じ階層に words.json があるか確認してください。`);
                 }
 
-                // CSVデータを取得
-                const response = await fetch(SPREADSHEET_CSV_URL);
-                if (!response.ok) throw new Error("データの取得に失敗しました。URLを確認してください。");
-                const csvText = await response.text();
-                
-                // CSVの解析（簡易版）
-                parseCSV(csvText);
+                const rawJson = await response.json();
+                parseWordsJson(rawJson);
 
-                if (allWordsData.length < 10) {
-                    throw new Error("問題データが足りません（10問以上必要です）。");
+                if (allWordsPool.length < 10) {
+                    throw new Error(`有効な問題データが ${allWordsPool.length} 件しかありません。`);
                 }
 
-                loadingText.innerText = "ふりがなエンジンの準備中...";
-                await initKuroshiro();
+                // ステップ2: ふりがなエンジン(Kuroshiro)の初期化
+                loadingStatus.innerHTML = 'すべての<ruby>漢字<rt>かんじ</rt></ruby>にふりがなをつける<ruby>準備<rt>じゅんび</rt></ruby>をしています...';
+                loadingBar.style.width = '75%';
+                await initFuriganaEngineWithTimeout(8000);
 
-                startNewQuiz();
+                loadingBar.style.width = '100%';
 
-            } catch (error) {
-                console.error(error);
-                loadingText.classList.add("hidden");
-                loadingError.innerText = "エラー: " + error.message;
-                loadingError.classList.remove("hidden");
+                // クイズ開始
+                document.getElementById('total-pool-count').textContent = allWordsPool.length;
+                resetUnusedPool();
+                await startNewRound();
+
+            } catch (err) {
+                console.error(err);
+                loadingError.classList.remove('hidden');
+                loadingError.innerHTML = `<strong>エラーが発生しました：</strong><br>${err.message}`;
             }
         }
 
-        // CSVテキストの解析
-        function parseCSV(text) {
-            const lines = text.split(/\r?\n/);
-            allWordsData = [];
-            // 1行目はヘッダーとして除外
-            for (let i = 1; i < lines.length; i++) {
-                if (!lines[i].trim()) continue;
-                // ダブルクォートを考慮したCSV分割の簡易正規表現
-                const row = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-                const cleanRow = row.map(col => col.replace(/^"|"$/g, '').trim());
-                
-                if (cleanRow.length >= 3) { // 少なくとも単語、読み、意味が必要
-                    allWordsData.push({
-                        word: cleanRow[0],
-                        reading: cleanRow[1],
-                        meaning: cleanRow[2],
-                        example: cleanRow[3] || ""
+        // words.json（{"word", "meaning", "example"}）の解析と括弧内ふりがなの抽出
+        function parseWordsJson(rawData) {
+            const list = Array.isArray(rawData) ? rawData : [];
+            allWordsPool = [];
+            customRubyDict.clear();
+
+            list.forEach((item, idx) => {
+                if (!item || typeof item !== 'object') return;
+
+                const rawWord = String(item.word || '').trim();
+                const rawMeaning = String(item.meaning || '').trim();
+                const rawExample = String(item.example || '').trim();
+
+                // 空データや、1967行目に混入しているヘッダー行 {"word":"語彙","meaning":"意味","example":"例文"} を除外
+                if (!rawWord || !rawMeaning) return;
+                if (rawWord === '語彙' && rawMeaning === '意味') return;
+
+                // word の中に含まれる丸括弧（読みや別表記）を解析
+                // 例: "怪訝（けげん）だ" -> cleanWord: "怪訝だ", preRubyHtml: "<ruby>怪訝<rt>けげん</rt></ruby>だ"
+                const parsed = parseWordAndParentheses(rawWord);
+
+                // カギ括弧「」が外側に付いている例文は、見栄え統一のため外側の「」を除去
+                const cleanExample = rawExample.replace(/^「+/, '').replace(/」+$/, '').trim();
+
+                allWordsPool.push({
+                    id: idx,
+                    rawWord: rawWord,
+                    cleanWord: parsed.cleanWord,
+                    preRubyHtml: parsed.preRubyHtml,
+                    extractedReadings: parsed.readings,
+                    altKanjiForms: parsed.altForms,
+                    meaning: rawMeaning,
+                    example: cleanExample
+                });
+            });
+        }
+
+        // "物言えば唇（くちびる）寒し秋の風" や "けなげだ（健気だ）" を綺麗に分解する関数
+        function parseWordAndParentheses(rawWord) {
+            let cleanWord = rawWord;
+            let preRubyHtml = rawWord;
+            const readings = [];
+            const altForms = [];
+
+            // パターン1: 直前の漢字に対する括弧読み 例: 怪訝（けげん）だ / 唇（くちびる）
+            const inlineRubyRegex = /([一-龠々〆ヵヶ]+)[（\(]([ぁ-んァ-ヶー・]+)[）\)]/g;
+            if (inlineRubyRegex.test(rawWord)) {
+                preRubyHtml = rawWord.replace(inlineRubyRegex, (match, kanji, reading) => {
+                    const hira = katakanaToHiragana(reading);
+                    readings.push(hira);
+                    customRubyDict.set(kanji, hira);
+                    return `<ruby>${kanji}<rt>${hira}</rt></ruby>`;
+                });
+            }
+
+            // パターン2: 単語末尾に全体の読みや別表記がある場合 例: けなげだ（健気だ） / 閉口する（へいこうする）
+            const parenMatches = [...rawWord.matchAll(/[（\(](.*?)[）\)]/g)];
+            parenMatches.forEach(m => {
+                const content = m[1].trim();
+                if (/^[ぁ-んァ-ヶー]+$/.test(content)) {
+                    readings.push(katakanaToHiragana(content));
+                } else if (content) {
+                    altForms.push(content);
+                }
+            });
+
+            // 括弧をすべて取り除き、末尾の不要な句点を消したクリーンな単語名
+            cleanWord = rawWord
+                .replace(/[（\(].*?[）\)]/g, '')
+                .replace(/。+$/, '')
+                .trim();
+
+            // 残った括弧をpreRubyHtmlからも除去
+            preRubyHtml = preRubyHtml
+                .replace(/[（\(].*?[）\)]/g, '')
+                .replace(/。+$/, '')
+                .trim();
+
+            // もし「閉口する（へいこうする）」のように動詞＋全体の読みだった場合、漢字部分に読みを割り当てる
+            if (readings.length === 1 && !preRubyHtml.includes('<ruby>')) {
+                const fullReading = readings[0];
+                const kanjiVerbMatch = cleanWord.match(/^([一-龠々〆ヵヶ]+)([ぁ-ん]*)$/);
+                if (kanjiVerbMatch) {
+                    const kPart = kanjiVerbMatch[1];
+                    const okuri = kanjiVerbMatch[2];
+                    if (okuri && fullReading.endsWith(okuri) && fullReading.length > okuri.length) {
+                        const kReading = fullReading.slice(0, fullReading.length - okuri.length);
+                        customRubyDict.set(kPart, kReading);
+                        preRubyHtml = `<ruby>${kPart}<rt>${kReading}</rt></ruby>${okuri}`;
+                    } else if (!okuri) {
+                        customRubyDict.set(kPart, fullReading);
+                        preRubyHtml = `<ruby>${kPart}<rt>${fullReading}</rt></ruby>`;
+                    }
+                }
+            }
+
+            return { cleanWord, preRubyHtml, readings, altForms };
+        }
+
+        function katakanaToHiragana(str) {
+            return str.replace(/[\u30a1-\u30f6]/g, match =>
+                String.fromCharCode(match.charCodeAt(0) - 0x60)
+            );
+        }
+
+        function hiraganaToKatakana(str) {
+            return str.replace(/[\u3041-\u3096]/g, match =>
+                String.fromCharCode(match.charCodeAt(0) + 0x60)
+            );
+        }
+
+        // ==========================================
+        // 2. ふりがなエンジン（全漢字へのルビ付与）
+        // ==========================================
+        async function initFuriganaEngineWithTimeout(timeoutMs) {
+            const initPromise = (async () => {
+                const KClass = window.Kuroshiro.default || window.Kuroshiro;
+                const AClass = window.KuromojiAnalyzer.default || window.KuromojiAnalyzer;
+                const instance = new KClass();
+                await instance.init(new AClass({
+                    dictPath: 'https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/'
+                }));
+                kuroshiroObj = instance;
+            })();
+
+            const timeoutPromise = new Promise(resolve => setTimeout(resolve, timeoutMs));
+            await Promise.race([initPromise, timeoutPromise]);
+        }
+
+        // 文字列のひらがな読みを取得する補助関数（表記ゆれマスク用）
+        async function getHiraganaReading(text) {
+            if (!text) return '';
+            if (/^[ぁ-んァ-ヶー]+$/.test(text)) return katakanaToHiragana(text);
+            if (kuroshiroObj) {
+                try {
+                    const hira = await kuroshiroObj.convert(text, { mode: 'normal', to: 'hiragana' });
+                    return katakanaToHiragana(hira).replace(/[^ぁ-んー]/g, '');
+                } catch (e) {}
+            }
+            return '';
+        }
+
+        // 文章中のすべての漢字にふりがな（<ruby>）を振る関数
+        async function addFuriganaToAllKanji(text) {
+            if (!text) return '';
+
+            // 空欄マーカー 【 ？ 】 を保護
+            const BLANK_TOKEN = '___QUIZ_BLANK_BOX___';
+            let workText = text.replace(/【\s*[？\?]\s*】/g, BLANK_TOKEN);
+
+            if (kuroshiroObj) {
+                try {
+                    workText = await kuroshiroObj.convert(workText, {
+                        mode: 'furigana',
+                        to: 'hiragana'
                     });
+                } catch (e) {
+                    console.warn('Kuroshiro convert error:', e);
+                }
+            } else {
+                // 万が一CDNがオフラインの場合でもカスタム辞書からルビを振る
+                customRubyDict.forEach((reading, kanji) => {
+                    if (workText.includes(kanji)) {
+                        workText = workText.replace(
+                            new RegExp(escapeRegExp(kanji), 'g'),
+                            `<ruby>${kanji}<rt>${reading}</rt></ruby>`
+                        );
+                    }
+                });
+            }
+
+            // 保護した空欄マーカーを黄色いバッジに戻す
+            workText = workText.replace(new RegExp(BLANK_TOKEN, 'g'), '<span class="blank-box">【 ？ 】</span>');
+            return workText;
+        }
+
+        // 選択肢・正解表示の単語に確実にふりがなを振る関数
+        async function formatWordChoiceWithRuby(wordObj) {
+            const target = wordObj.cleanWord;
+            if (!/[一-龠々〆ヵヶ]/.test(target)) {
+                return target;
+            }
+            // 1. Kuroshiroによる変換を試行（既存の括弧内ルビ指定があればカスタム辞書で補正）
+            if (kuroshiroObj) {
+                try {
+                    // もし単語全体がすでに綺麗な <ruby> になっていればそれを利用し、残りの漢字にもKuroshiroを適用
+                    const converted = await kuroshiroObj.convert(target, { mode: 'furigana', to: 'hiragana' });
+                    if (converted.includes('<ruby>')) {
+                        return converted;
+                    }
+                } catch (e) {}
+            }
+            // 2. フォールバックとして括弧から抽出したルビ付きHTMLを返す
+            return wordObj.preRubyHtml;
+        }
+
+        // ==========================================
+        // 3. 問題文の生成と「解答の完全マスク処理（6段階）」
+        // ==========================================
+        function escapeRegExp(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // 例文や意味文の中に含まれる正解語彙（活用形・表記ゆれ・かな表記含む）をすべて【 ？ 】にする関数
+        async function maskTargetWordInSentence(sentence, wordObj) {
+            if (!sentence) return '';
+            let masked = sentence;
+
+            const baseClean = wordObj.cleanWord.replace(/^[〜～・]+/, '').trim();
+            const candidates = new Set([baseClean, ...wordObj.altForms]);
+
+            // 「なぎ・なぐ」のように「・」で区切られている場合は分割して両方マスク対象にする
+            baseClean.split('・').forEach(part => {
+                if (part.trim()) candidates.add(part.trim());
+            });
+
+            // 読点（、）を除いたバージョンも追加（例：「鶏が先か、卵が先か」→「鶏が先か卵が先か」）
+            if (baseClean.includes('、')) {
+                candidates.add(baseClean.replace(/、/g, ''));
+            }
+
+            const regexPatterns = [];
+
+            for (const cand of candidates) {
+                if (!cand) continue;
+
+                // (1) 完全一致
+                regexPatterns.push(escapeRegExp(cand));
+
+                // (2) 「〜する」「〜だ」「〜な」「〜に」「〜と」の語尾変化対応
+                for (const suffix of ['する', 'だ', 'な', 'に', 'と', 'たる', 'とした', 'として']) {
+                    if (cand.endsWith(suffix) && cand.length > suffix.length) {
+                        const stem = cand.slice(0, -suffix.length);
+                        if (stem.length >= 2) {
+                            regexPatterns.push(escapeRegExp(stem) + '(?:する|した|して|し|せ|さ|せず|しろ|だ|な|に|と|の|たる|とした|として)?');
+                        }
+                    }
+                }
+
+                // (3) 動詞・形容詞・慣用句の末尾活用への対応
+                // 例: 「引き合いに出す」→「引き合いに出して」、「慕う」→「慕っている」、「折り合いが悪い」→「折り合いが悪く」
+                if (/[ぁ-ん]$/.test(cand) && cand.length >= 2) {
+                    const stem1 = cand.slice(0, -1);
+                    if (stem1.length >= 1 && /[一-龠々〆ヵヶ]/.test(stem1)) {
+                        regexPatterns.push(escapeRegExp(stem1) + '[ぁ-ん]{0,6}');
+                    } else if (stem1.length >= 3) {
+                        regexPatterns.push(escapeRegExp(stem1) + '[ぁ-ん]{0,5}');
+                    }
+
+                    if (/[ぁ-ん]{2}$/.test(cand) && cand.length >= 4) {
+                        const stem2 = cand.slice(0, -2);
+                        if (stem2.length >= 2) {
+                            regexPatterns.push(escapeRegExp(stem2) + '[ぁ-ん]{0,6}');
+                        }
+                    }
+                }
+
+                // (4) 慣用句の助詞省略・変化対応（例：「息を巻く」→「息巻きながら」）
+                const particlePhraseMatch = cand.match(/^(.+?)[をがにへでと](.+)$/);
+                if (particlePhraseMatch) {
+                    const nounPart = particlePhraseMatch[1];
+                    const verbPart = particlePhraseMatch[2];
+                    const verbStem = verbPart.length >= 2 ? verbPart.slice(0, -1) : verbPart;
+                    if (nounPart.length >= 1 && verbStem.length >= 1) {
+                        regexPatterns.push(escapeRegExp(nounPart) + '[をがにへでとのはも]?' + escapeRegExp(verbStem) + '[ぁ-ん]{0,5}');
+                    }
+                }
+
+                // (5) 単語内の2文字以上の漢字熟語（例：「無機的」に対して例文が「無機質な」の場合など、共通漢字幹や熟語をマスク）
+                const kanjiChunks = cand.match(/[一-龠々〆ヵヶ]{2,}/g) || [];
+                kanjiChunks.forEach(kc => {
+                    regexPatterns.push(escapeRegExp(kc) + '(?:する|した|して|的な|的|な|に|だ)?');
+                });
+            }
+
+            // (6) ひらがな表記・カタカナ表記での露出対策
+            // 例: 「間引く」→「ダイコンをまびく」、「憂うつ」→「ゆううつな」、「はつらつ」→「元気ハツラツ」
+            const hiraReading = wordObj.extractedReadings[0] || (await getHiraganaReading(baseClean));
+            if (hiraReading && hiraReading.length >= 3) {
+                const kataReading = hiraganaToKatakana(hiraReading);
+                regexPatterns.push(escapeRegExp(hiraReading));
+                regexPatterns.push(escapeRegExp(kataReading));
+                // ひらがな動詞の活用（末尾1文字変化）
+                if (/[うくぐすつぬぶむる]$/.test(hiraReading) && hiraReading.length >= 3) {
+                    const hiraStem = hiraReading.slice(0, -1);
+                    regexPatterns.push(escapeRegExp(hiraStem) + '[ぁ-ん]{1,4}');
                 }
             }
+
+            // パターンを長い順にソートして一括置換
+            const uniquePatterns = Array.from(new Set(regexPatterns)).sort((a, b) => b.length - a.length);
+            if (uniquePatterns.length > 0) {
+                const masterRegex = new RegExp(uniquePatterns.join('|'), 'g');
+                masked = masked.replace(masterRegex, '【 ？ 】');
+            }
+
+            // もし「物言えば唇寒し秋の風」に対して例文が「物言えば唇寒し」のように前半部分一致だった場合の補完
+            if (!masked.includes('【 ？ 】') && baseClean.length >= 5) {
+                const prefix4 = baseClean.slice(0, 4);
+                if (masked.includes(prefix4)) {
+                    masked = masked.replace(new RegExp(escapeRegExp(prefix4) + '[^、。」]*', 'g'), '【 ？ 】');
+                }
+            }
+
+            // 連続した【 ？ 】を1つにまとめる
+            masked = masked.replace(/(【\s*[？\?]\s*】)+/g, '【 ？ 】');
+            return masked;
         }
 
-        // ふりがなエンジンの初期化
-        async function initKuroshiro() {
-            kuroshiro = new Kuroshiro();
-            await kuroshiro.init(new KuromojiAnalyzer({ dictPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict" }));
+        // 1問分のクイズデータを組み立てる関数
+        async function buildQuizQuestion(targetItem, allPool) {
+            // 誤答（ダミー選択肢）を2つ選ぶ（同じ単語や意味が酷似しているものを避ける）
+            const distractors = [];
+            let attempts = 0;
+            while (distractors.length < 2 && attempts < 200) {
+                attempts++;
+                const candidate = allPool[Math.floor(Math.random() * allPool.length)];
+                if (
+                    candidate.cleanWord !== targetItem.cleanWord &&
+                    candidate.meaning !== targetItem.meaning &&
+                    !distractors.some(d => d.cleanWord === candidate.cleanWord)
+                ) {
+                    distractors.push(candidate);
+                }
+            }
+
+            const choices = [targetItem, ...distractors];
+            shuffleArray(choices);
+
+            let questionText = '';
+            let badgeText = '';
+
+            // 意味文の中にもし正解語彙が入っていればマスクする
+            let cleanMeaning = await maskTargetWordInSentence(targetItem.meaning, targetItem);
+            cleanMeaning = cleanMeaning.replace(/。$/, '');
+
+            const hasExample = targetItem.example && targetItem.example.length >= 3;
+
+            if (hasExample) {
+                const maskedEx = await maskTargetWordInSentence(targetItem.example, targetItem);
+
+                if (maskedEx.includes('【 ？ 】')) {
+                    // 例文の該当箇所が綺麗に【 ？ 】になった場合：小学生にも分かりやすいよう意味のヒントも添える
+                    badgeText = '📝 例文あなうめクイズ';
+                    questionText = `つぎの文の【 ？ 】に入る言葉をえらぼう！<br>『${maskedEx}』<br><span class="text-base md:text-lg text-indigo-700 font-bold mt-2 inline-block">（ヒント：${cleanMeaning}）</span>`;
+                } else {
+                    // 例文中にその単語自体が含まれていないデータ（例：「いじらしい」の例文など）の場合
+                    const situation = FUN_SITUATIONS[Math.floor(Math.random() * FUN_SITUATIONS.length)];
+                    badgeText = '🌟 ことばの意味・使い方クイズ';
+                    questionText = `${situation}<br>「${cleanMeaning}」という意味を持つ【 ？ 】に入る言葉はどれかな？<br><span class="text-base md:text-lg text-gray-600 mt-1 inline-block">（似た場面の例：『${maskedEx}』）</span>`;
+                }
+            } else {
+                // 例文が空のデータの場合
+                const situation = FUN_SITUATIONS[Math.floor(Math.random() * FUN_SITUATIONS.length)];
+                badgeText = '💡 ことばの意味クイズ';
+                questionText = `${situation}<br>「${cleanMeaning}」という意味を表す【 ？ 】に入る言葉は、つぎの3つのうちどれかな？`;
+            }
+
+            // 念のため、ダミー選択肢の単語が問題文（ヒント部分など）にそのまま露出していないかもチェックして伏せる
+            for (const c of choices) {
+                if (c.cleanWord === targetItem.cleanWord) continue;
+                if (c.cleanWord.length >= 2 && questionText.includes(c.cleanWord)) {
+                    questionText = questionText.replace(new RegExp(escapeRegExp(c.cleanWord), 'g'), '〇〇');
+                }
+            }
+
+            return {
+                target: targetItem,
+                choices: choices,
+                questionText: questionText,
+                badgeText: badgeText
+            };
         }
 
-        // ふりがなをつける関数
-        async function applyFurigana(text) {
-            if (!kuroshiro) return text;
-            try {
-                return await kuroshiro.convert(text, { mode: "furigana", to: "hiragana" });
-            } catch (e) {
-                return text;
+        // ==========================================
+        // 4. クイズ進行・画面描画ロジック
+        // ==========================================
+        function resetUnusedPool() {
+            unusedIndices = Array.from({ length: allWordsPool.length }, (_, i) => i);
+            shuffleArray(unusedIndices);
+        }
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
             }
         }
 
-        // --- クイズロジック ---
-        // 以下、前回のクイズ出題・正解判定・お祝いアニメーションのコードがそのまま続きます。
-        // （長くなるためクイズの生成部分は省略していますが、前回のコードと連携します）
-        
-        async function startNewQuiz() {
-            loadingScreen.classList.add('hidden');
-            quizContainer.classList.remove('hidden');
-            // ... (ランダムに10問選んで出題する処理)
-            document.getElementById('question-text').innerHTML = await applyFurigana("テスト問題がここに表示されます。");
+        async function startNewRound() {
+            // 未出題プールが10問未満になったら全問題を再シャッフル
+            if (unusedIndices.length < QUESTIONS_PER_ROUND) {
+                resetUnusedPool();
+            }
+
+            const selectedIndices = unusedIndices.splice(0, QUESTIONS_PER_ROUND);
+            currentQuizSet = [];
+            for (const idx of selectedIndices) {
+                const q = await buildQuizQuestion(allWordsPool[idx], allWordsPool);
+                currentQuizSet.push(q);
+            }
+
+            currentQuestionIndex = 0;
+            currentScore = 0;
+
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('final-screen').classList.add('hidden');
+            document.getElementById('quiz-screen').classList.remove('hidden');
+
+            updateHeaderStats();
+            await renderCurrentQuestion();
         }
 
-        window.onload = initApp;
-    </script>
-</body>
-</html>
+        function updateHeaderStats() {
+            document.getElementById('score-display').textContent = currentScore;
+            document.getElementById('current-q-num').textContent = currentQuestionIndex + 1;
+            document.getElementById('max-q-num').textContent = QUESTIONS_PER_ROUND;
+            document.getElementById('remaining-pool-count').textContent = unusedIndices.length;
+            const progressPercent = ((currentQuestionIndex + 1) / QUESTIONS_PER_ROUND) * 100;
+            document.getElementById('quiz-progress-bar').style.width = `${progressPercent}%`;
+        }
+
+        async function renderCurrentQuestion() {
+            const qData = currentQuizSet[currentQuestionIndex];
+            const explanationArea = document.getElementById('explanation-area');
+            const choicesContainer = document.getElementById('choices-container');
+
+            explanationArea.classList.add('hidden');
+            choicesContainer.innerHTML = '';
+            updateHeaderStats();
+
+            // バッジと問題文のすべての漢字にふりがなを振って描画
+            document.getElementById('question-type-badge').innerHTML = await addFuriganaToAllKanji(qData.badgeText);
+            document.getElementById('question-text').innerHTML = await addFuriganaToAllKanji(qData.questionText);
+
+            // 3つの選択肢ボタンを生成（すべてふりがな付き）
+            const labels = ['A', 'B', 'C'];
+            for (let i = 0; i < qData.choices.length; i++) {
+                const choiceItem = qData.choices[i];
+                const rubyWordHtml = await formatWordChoiceWithRuby(choiceItem);
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'choice-btn w-full text-left bg-white hover:bg-blue-50 border-2 border-blue-200 hover:border-blue-400 rounded-2xl p-4 md:p-5 text-xl md:text-2xl font-bold text-gray-800 shadow-sm transition transform hover:-translate-y-0.5 flex items-center gap-4 cursor-pointer';
+                btn.innerHTML = `
+                    <span class="w-10 h-10 rounded-full bg-blue-600 text-white font-black flex items-center justify-center shrink-0 text-lg">${labels[i]}</span>
+                    <span class="flex-1 leading-relaxed">${rubyWordHtml}</span>
+                `;
+                btn.addEventListener('click', () => handleChoiceSelect(i));
+                choicesContainer.appendChild(btn);
+            }
+        }
+
+        async function handleChoiceSelect(selectedIndex) {
+            const qData = currentQuizSet[currentQuestionIndex];
+            const selectedItem = qData.choices[selectedIndex];
+            const isCorrect = (selectedItem.id === qData.target.id);
+
+            // 全ボタンをロックし、正解・不正解のハイライトを適用
+            const allButtons = document.querySelectorAll('#choices-container .choice-btn');
+            allButtons.forEach((btn, idx) => {
+                btn.disabled = true;
+                btn.classList.remove('hover:bg-blue-50', 'hover:border-blue-400', 'hover:-translate-y-0.5', 'cursor-pointer');
+                const item = qData.choices[idx];
+                if (item.id === qData.target.id) {
+                    btn.classList.add('bg-green-100', 'border-green-500', 'text-green-900');
+                } else if (idx === selectedIndex && !isCorrect) {
+                    btn.classList.add('bg-red-100', 'border-red-400', 'text-red-900', 'opacity-80');
+                } else {
+                    btn.classList.add('opacity-50');
+                }
+            });
+
+            const resultIcon = document.getElementById('result-icon');
+            const resultTitle = document.getElementById('result-title');
+
+            if (isCorrect) {
+                currentScore++;
+                document.getElementById('score-display').textContent = currentScore;
+                resultIcon.textContent = getCelebrationEmoji(currentScore);
+                resultTitle.className = 'text-2xl md:text-3xl font-extrabold text-red-600';
+                resultTitle.innerHTML = await addFuriganaToAllKanji(getCelebrationTitle(currentScore));
+
+                // 正解数に応じて盛大になるお祝い演出を実行
+                triggerEscalatingCelebration(currentScore);
+            } else {
+                resultIcon.textContent = '💦';
+                resultTitle.className = 'text-2xl md:text-3xl font-extrabold text-blue-700';
+                resultTitle.innerHTML = await addFuriganaToAllKanji('おしい！解説を読んでおぼえよう！');
+                playWrongSound();
+            }
+
+            // 正解単語・意味・例文のすべての漢字にふりがなを振って表示
+            document.getElementById('correct-word-display').innerHTML = await formatWordChoiceWithRuby(qData.target);
+            document.getElementById('explanation-meaning').innerHTML = await addFuriganaToAllKanji(qData.target.meaning);
+
+            const exBox = document.getElementById('explanation-example-box');
+            const exText = document.getElementById('explanation-example');
+            if (qData.target.example) {
+                exBox.classList.remove('hidden');
+                exText.innerHTML = await addFuriganaToAllKanji(`「${qData.target.example}」`);
+            } else {
+                exBox.classList.add('hidden');
+            }
+
+            const nextBtn = document.getElementById('next-btn');
+            if (currentQuestionIndex + 1 >= QUESTIONS_PER_ROUND) {
+                nextBtn.innerHTML = '👑 <ruby>結果<rt>けっか</rt></ruby><ruby>発表<rt>はっぴょう</rt></ruby>をみる ➡️';
+            } else {
+                nextBtn.innerHTML = 'つぎの<ruby>問題<rt>もんだい</rt></ruby>へすすむ ➡️';
+            }
+
+            const explanationArea = document.getElementById('explanation-area');
+            explanationArea.classList.remove('hidden');
+            explanationArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // ==========================================
+        // 5. 正解数に応じて豪華になるお祝い演出＆サウンド
+        // ==========================================
+        function getCelebrationEmoji(score) {
+            if (score === 1) return '🎉';
+            if (score === 2) return '🎊';
+            if (score <= 4) return '🌟';
+            if (score <= 7) return '🚀';
+            return '👑';
+        }
+
+        function getCelebrationTitle(score) {
+            if (score === 1) return '正解！やったね！';
+            if (score === 2) return '2問正解！いい調子！';
+            if (score === 3) return '3問正解！素晴らしいひらめき！';
+            if (score === 4) return '4問正解！絶好調だね！！';
+            if (score === 5) return '5問正解！すごすぎる大活躍！！';
+            if (score <= 7) return `${score}問正解！天才的な語彙力だ！！`;
+            if (score <= 9) return `${score}問正解！無敵のクイズマスター！！`;
+            return '10問全問正解！！伝説のグランドチャンピオン！！';
+        }
+
+        function triggerEscalatingCelebration(score) {
+            playSuccessSound(score);
+            if (typeof confetti !== 'function') return;
+
+            try {
+                if (score === 1) {
+                    // 1問正解：クラッカーが弾ける
+                    confetti({
+                        particleCount: 45,
+                        spread: 60,
+                        origin: { y: 0.65 }
+                    });
+                } else if (score === 2) {
+                    // 2問正解：両サイドからダブルクラッカー
+                    confetti({ particleCount: 55, angle: 60, spread: 55, origin: { x: 0, y: 0.65 } });
+                    confetti({ particleCount: 55, angle: 120, spread: 55, origin: { x: 1, y: 0.65 } });
+                } else if (score === 3) {
+                    // 3問正解：キラキラのスターシャワー
+                    confetti({
+                        particleCount: 85,
+                        spread: 100,
+                        origin: { y: 0.4 },
+                        shapes: ['star'],
+                        colors: ['#FFD700', '#FFA500', '#FF4500', '#00BFFF']
+                    });
+                } else if (score === 4) {
+                    // 4問正解：画面揺れ＋3連発花火
+                    triggerScreenShake();
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => {
+                            confetti({
+                                particleCount: 75,
+                                startVelocity: 35,
+                                spread: 360,
+                                origin: { x: 0.2 + i * 0.3, y: 0.35 }
+                            });
+                        }, i * 200);
+                    }
+                } else {
+                    // 5問以上正解：正解数が増えるほど盛大になるレインボーフェスティバル
+                    triggerScreenShake();
+                    const duration = Math.min(1200 + score * 250, 3500);
+                    const end = Date.now() + duration;
+
+                    (function frame() {
+                        confetti({
+                            particleCount: 6 + Math.floor(score / 2),
+                            angle: 60,
+                            spread: 65,
+                            origin: { x: 0, y: 0.6 }
+                        });
+                        confetti({
+                            particleCount: 6 + Math.floor(score / 2),
+                            angle: 120,
+                            spread: 65,
+                            origin: { x: 1, y: 0.6 }
+                        });
+                        if (Date.now() < end) {
+                            requestAnimationFrame(frame);
+                        }
+                    })();
+                }
+            } catch (e) {
+                console.warn('Confetti error:', e);
+            }
+        }
+
+        function triggerScreenShake() {
+            const quizScreen = document.getElementById('quiz-screen');
+            quizScreen.classList.remove('shake-effect');
+            void quizScreen.offsetWidth;
+            quizScreen.classList.add('shake-effect');
+        }
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) audioCtx = new AudioContextClass();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playSuccessSound(score) {
+            try {
+                initAudio();
+                if (!audioCtx) return;
+                const now = audioCtx.currentTime;
+                const baseNotes = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+                const noteCount = Math.min(2 + score, baseNotes.length);
+
+                for (let i = 0; i < noteCount; i++) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = score >= 4 ? 'triangle' : 'sine';
+                    osc.frequency.setValueAtTime(baseNotes[i], now + i * 0.08);
+                    gain.gain.setValueAtTime(0.18, now + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + i * 0.08);
+                    osc.stop(now + i * 0.08 + 0.35);
+                }
+            } catch (e) {}
+        }
+
+        function playWrongSound() {
+            try {
+                initAudio();
+                if (!audioCtx) return;
+                const now = audioCtx.currentTime;
+                [240, 200].forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.15);
+                    gain.gain.setValueAtTime(0.1, now + idx * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.15 + 0.22);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.15);
+                    osc.stop(now + idx * 0.15 + 0.22);
+                });
+            } catch (e) {}
+        }
+
+        // ==========================================
+        // 6. イベントリスナー（次へ・最終結果画面）
+        // ==========================================
+        document.getElementById('next-btn').addEventListener('click', async () => {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < QUESTIONS_PER_ROUND) {
+                await renderCurrentQuestion();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                await showFinalScreen();
+            }
+        });
+
+        async function showFinalScreen() {
+            document.getElementById('quiz-screen').classList.add('hidden');
+            const finalScreen = document.getElementById('final-screen');
+            finalScreen.classList.remove('hidden');
+
+            document.getElementById('final-score').textContent = currentScore;
+            document.getElementById('final-max').textContent = QUESTIONS_PER_ROUND;
+
+            let msg = '';
+            if (currentScore === QUESTIONS_PER_ROUND) {
+                msg = 'パーフェクト達成！すべての問題を見事にクリアしました！';
+            } else if (currentScore >= 7) {
+                msg = 'すばらしい大活躍でした！この調子でどんどん言葉をマスターしよう！';
+            } else {
+                msg =
