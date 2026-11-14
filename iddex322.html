@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>わくわく3択穴埋めクイズ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        body {
+            font-family: 'Hiragino Maru Gothic ProN', 'Rounded M+ 1c', 'Yu Gothic', 'Meiryo', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        button {
+            touch-action: manipulation;
+        }
+        ruby {
+            ruby-align: center;
+        }
+        rt {
+            font-size: 0.6em;
+            color: #4b5563;
+            font-weight: normal;
+        }
+        .choice-btn rt {
+            color: inherit;
+            opacity: 0.85;
+        }
+        .blank-box {
+            display: inline-block;
+            background-color: #fef08a;
+            color: #d97706;
+            border: 2px dashed #f59e0b;
+            border-radius: 0.5rem;
+            padding: 0.05rem 0.5rem;
+            margin: 0 0.2rem;
+            font-weight: 900;
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.95); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .animate-pop {
+            animation: popIn 0.2s ease-out forwards;
+        }
+        @keyframes screenShake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px) rotate(-0.5deg); }
+            40%, 80% { transform: translateX(6px) rotate(0.5deg); }
+        }
+        .shake-effect {
+            animation: screenShake 0.4s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-b from-blue-50 to-indigo-100 text-slate-800 min-h-screen p-4 md:p-8 flex flex-col items-center justify-center">
+
+    <!-- 1. ローディング画面 -->
+    <div id="loading-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 text-center">
+        <div class="animate-bounce text-5xl mb-4">📚</div>
+        <h1 class="text-2xl font-bold text-indigo-600 mb-3">
+            <ruby>問題<rt>もんだい</rt></ruby>を<ruby>読<rt>よ</rt></ruby>み<ruby>込<rt>こ</rt></ruby>んでいます...
+        </h1>
+        <p id="loading-status" class="text-slate-600 mb-4 font-bold">
+            プログラムを<ruby>起動<rt>きどう</rt></ruby>しています...
+        </p>
+        <div class="w-full bg-slate-200 rounded-full h-3 mb-4 overflow-hidden">
+            <div id="loading-bar" class="bg-indigo-500 h-3 rounded-full transition-all duration-300" style="width: 15%"></div>
+        </div>
+        <div id="loading-error" class="hidden bg-rose-50 border-2 border-rose-300 text-rose-700 p-4 rounded-xl text-left text-sm mt-4 space-y-2"></div>
+    </div>
+
+    <!-- 2. メインのクイズ画面 -->
+    <div id="quiz-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-6 md:p-8 hidden">
+        <!-- ヘッダー -->
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-6 border-b-2 border-indigo-100 pb-4">
+            <h1 class="text-xl md:text-2xl font-extrabold text-indigo-600">
+                わくわく3<ruby>択<rt>たく</rt></ruby><ruby>穴埋<rt>あなう</rt></ruby>めクイズ
+            </h1>
+            <div class="flex items-center gap-3">
+                <span class="text-xs bg-indigo-100 text-indigo-700 font-bold px-3 py-1 rounded-full">
+                    <ruby>全<rt>ぜん</rt></ruby><span id="total-pool-count">0</span><ruby>語<rt>ご</rt></ruby><ruby>収録<rt>しゅうろく</rt></ruby>
+                </span>
+                <div class="bg-orange-100 text-orange-600 font-extrabold px-4 py-1.5 rounded-full text-base md:text-lg shadow-sm">
+                    🔥 <span id="score-display">0</span><ruby>問<rt>もん</rt></ruby><ruby>正解<rt>せいかい</rt></ruby>！
+                </div>
+            </div>
+        </div>
+
+        <!-- 進捗バー -->
+        <div class="flex justify-between items-center mb-2 text-sm font-bold text-slate-500">
+            <div>だい <span id="current-q-num" class="text-indigo-600 text-lg">1</span> もん / <span id="max-q-num">10</span></div>
+            <div><ruby>未出題<rt>みしゅつだい</rt></ruby>プール: <span id="remaining-pool-count">0</span><ruby>問<rt>もん</rt></ruby></div>
+        </div>
+        <div class="w-full bg-slate-100 rounded-full h-2.5 mb-6 overflow-hidden">
+            <div id="quiz-progress-bar" class="bg-indigo-500 h-2.5 rounded-full transition-all duration-300" style="width: 10%"></div>
+        </div>
+
+        <!-- 問題文ボックス -->
+        <div id="question-box" class="text-lg md:text-2xl font-bold leading-loose mb-8 bg-indigo-50/70 p-6 rounded-2xl border-2 border-indigo-200 shadow-inner">
+            <div id="question-type-badge" class="inline-block text-xs font-bold bg-indigo-600 text-white px-3 py-1 rounded-lg mb-3"></div>
+            <p id="question-text" class="text-slate-800 leading-[2.2]"></p>
+        </div>
+
+        <!-- 3択ボタンコンテナ -->
+        <div id="choices-container" class="flex flex-col gap-4"></div>
+
+        <!-- 解説・次へエリア -->
+        <div id="explanation-area" class="hidden mt-8 pt-6 border-t-2 border-dashed border-slate-200 animate-pop">
+            <div id="feedback-box" class="rounded-2xl p-5 mb-6 flex items-start gap-4 border-2 bg-emerald-50/90 border-emerald-300">
+                <span id="result-icon" class="text-4xl md:text-5xl shrink-0">🎉</span>
+                <div class="text-left flex-1">
+                    <h2 id="result-title" class="text-xl md:text-2xl font-black mb-1 text-emerald-700"></h2>
+                    <p class="font-bold text-base md:text-lg text-slate-700 mt-2">
+                        【<ruby>正解<rt>せいかい</rt></ruby>】
+                        <span id="correct-word-display" class="text-2xl md:text-3xl font-extrabold text-rose-600 ml-1 leading-relaxed"></span>
+                    </p>
+                </div>
+            </div>
+
+            <div class="bg-amber-50/90 border-2 border-amber-200 p-5 rounded-2xl text-left mb-6 shadow-sm space-y-3">
+                <div>
+                    <p class="font-bold text-sm text-indigo-600 mb-1">■ <ruby>意味<rt>いみ</rt></ruby>・<ruby>解説<rt>かいせつ</rt></ruby>：</p>
+                    <p id="explanation-meaning" class="text-base md:text-lg text-slate-800 leading-[2.0] font-bold"></p>
+                </div>
+                <div id="explanation-example-box" class="pt-3 border-t border-amber-200/70 hidden">
+                    <p class="font-bold text-sm text-emerald-700 mb-1">■ <ruby>例文<rt>れいぶん</rt></ruby>：</p>
+                    <p id="explanation-example" class="text-base md:text-lg text-slate-700 leading-[2.0]"></p>
+                </div>
+            </div>
+
+            <button id="next-btn" type="button" class="w-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-extrabold py-4 px-8 rounded-2xl text-xl shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2">
+                <span id="next-btn-text">つぎの<ruby>問題<rt>もんだい</rt></ruby>へすすむ</span> ➡️
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. 最終結果画面 -->
+    <div id="final-screen" class="w-full max-w-2xl bg-white rounded-3xl shadow-xl p-8 text-center hidden animate-pop">
+        <div id="final-emoji" class="text-6xl mb-4">👑</div>
+        <h2 class="text-3xl font-extrabold text-indigo-600 mb-2">
+            クイズ<ruby>終了<rt>しゅうりょう</rt></ruby>！！
+        </h2>
+        <p id="final-message" class="text-lg text-slate-600 font-bold mb-6 leading-relaxed"></p>
+
+        <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-orange-200 rounded-2xl p-6 mb-8">
+            <p class="text-sm font-bold text-slate-500 mb-1">あなたの<ruby>最終<rt>さいしゅう</rt></ruby>スコア</p>
+            <p class="text-4xl md:text-5xl font-black text-orange-500">
+                <span id="final-score">0</span> / <span id="final-max">10</span> <ruby>問<rt>もん</rt></ruby><ruby>正解<rt>せいかい</rt></ruby>！
+            </p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <button id="retry-btn" type="button" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold py-4 px-6 rounded-2xl text-lg shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer">
+                🔄 もういちど<ruby>新<rt>あたら</rt></ruby>しい10<ruby>問<rt>もん</rt></ruby>であそぶ
+            </button>
+            <button id="replay-celebration-btn" type="button" class="bg-amber-400 hover:bg-amber-500 text-slate-900 font-extrabold py-4 px-6 rounded-2xl text-lg shadow-lg transition transform hover:-translate-y-0.5 cursor-pointer">
+                🎊 <ruby>花火<rt>はなび</rt></ruby>をもういちど<ruby>上<rt>あ</rt></ruby>げる
+            </button>
+        </div>
+    </div>
+
+    <!-- プレビュー環境（words.jsonがない環境）用の内蔵サンプルデータ -->
+    <script id="fallback-json-data" type="application/json">
+    [
+        {"word":"野蛮（やばん）","meaning":"文化がおくれていて、粗野で乱暴なこと。","example":"「あいつらは野蛮だから、付き合わない方がいい」"},
+        {"word":"身につまされる","meaning":"他人の不幸などが自分のことのように思われる。","example":"「友人の苦労話が身につまされる」"},
+        {"word":"埋め合わせ","meaning":"損失や足りないものを他のもので補うこと。","example":"「兄弟がいないさびしさを友人とのつきあいで埋め合わせる」"},
+        {"word":"関心事（かんしんじ）","meaning":"気がかりで、または興味のあることがら。","example":"「彼の関心事はいつもプロ野球についてである」"},
+        {"word":"引き合いに出す","meaning":"話などの中で、例として挙げる。","example":"「のび太はいつも母から出来杉君を引き合いに出して怒られる」"},
+        {"word":"やおら","meaning":"ゆっくりと。おもむろに。","example":"「市長がやおら立ち上がり、ゆっくりと挨拶を述べた」"},
+        {"word":"怪訝（けげん）だ","meaning":"いぶかしい。疑わしい。不審に思われる。","example":"「なぜそんなことを言うのかと怪訝な表情をした」"},
+        {"word":"吟味（ぎんみ）","meaning":"詳しく調べ確かめること。","example":"「スピーチの内容を吟味する」"},
+        {"word":"偽善（ぎぜん）","meaning":"うわべをいかにも善人らしく見せかけること。","example":"「注目を浴びたくていいことを言うのは偽善だ」"},
+        {"word":"いさめる","meaning":"まちがいや良くない点を改めるように言う。忠告する。","example":"「友人の行動をいさめる」"},
+        {"word":"途方に暮れる（とほうにくれる）","meaning":"どうしていいかわからない。","example":"「良い手立てが浮かばず、途方に暮れる」"},
+        {"word":"諸刃（もろは）の剣","meaning":"一方では役に立つが、他方では危険もあるもののたとえ。","example":"「原子力エネルギーは諸刃の剣だ」"},
+        {"word":"高をくくる","meaning":"最初から見くびること。ざっくりと程度を見積もること。","example":"「どうせ宿題はでないだろうと高をくくっていたら、出た」"},
+        {"word":"一線を画す（いっせんをかくす）","meaning":"境界をはっきりさせる。はっきりとくぎりをつける。","example":"「これまでの商品とは一線を画す画期的な新製品だ」"},
+        {"word":"興（きょう）ざめ","meaning":"それまで楽しいと思っていた気持ちを一気に失ってしまうこと。","example":"「冗談をまじめに返されてしまい、興ざめする」"},
+        {"word":"焦燥（しょうそう）","meaning":"あせること。","example":"「遅刻しそうで焦燥感にかられる」"}
+    ]
+    </script>
+
+    <script>
+        const QUESTIONS_PER_ROUND = 10;
+        let allWordsPool = [];
+        let unusedIndices = [];
+        let currentQuizSet = [];
+        let currentQuestionIndex = 0;
+        let currentScore = 0;
+        let isQuestionAnswered = false;
+        let customRubyDict = new Map();
+        let sortedDictKeys = [];
+        let audioCtx = null;
+
+        const FUN_SITUATIONS = [
+            "名探偵が事件解決のヒントを見つけたよ！",
+            "宇宙船のキャプテンから通信が入ったぞ！",
+            "魔法学校の試験にこんな問題が出たよ！",
+            "冒険の書に大事な言葉が記されている！",
+            "クイズ王決定戦のスペシャル問題だ！",
+            "発明家の博士がうなずきながら言ったよ！"
+        ];
+
+        // 頻出語彙のコンパクト内蔵ふりがな辞書（Kuromojiを使わず高速にルビを振る基盤）
+        const CORE_RUBY_RAW = "問題:もんだい|準備:じゅんび|語彙:ごい|意味:いみ|例文:れいぶん|解説:かいせつ|正解:せいかい|言葉:ことば|適切:てきせつ|場面:ばめん|名探偵:めいたんてい|事件解決:じけんかいけつ|宇宙船:うちゅうせん|通信:つうしん|魔法学校:まほうがっこう|試験:しけん|冒険:ぼうけん|決定戦:けっていせん|発明家:はつめいか|博士:はかせ|自分:じぶん|他人:たにん|相手:あいて|気持ち:きもち|態度:たいど|様子:ようす|物事:ものごと|状態:じょうたい|関係:かんけい|社会:しゃかい|人間:にんげん|生活:せいかつ|仕事:しごと|勉強:べんきょう|努力:どりょく|結果:けっか|成功:せいこう|失敗:しっぱい|理由:りゆう|原因:げんいん|目的:もくてき|方法:ほうほう|計画:けいかく|意見:いけん|主張:しゅちょう|判断:はんだん|理解:りかい|説明:せつめい|表現:ひょうげん|感情:かんじょう|知識:ちしき|能力:のうりょく|技術:ぎじゅつ|経験:けいけん|歴史:れきし|文化:ぶんか|自然:しぜん|環境:かんきょう|世界:せかい|時代:じだい|将来:しょうらい|過去:かこ|現在:げんざい|時間:じかん|場所:ばしょ|周囲:しゅうい|世間:せけん|人々:ひとびと|友人:ゆうじん|友達:ともだち|家族:かぞく|両親:りょうしん|子供:こども|子ども:こども|先生:せんせい|生徒:せいと|学校:がっこう|会社:かいしゃ|社長:しゃちょう|上司:じょうし|部下:ぶか|仲間:なかま|試合:しあい|勝負:しょうぶ|練習:れんしゅう|点数:てんすう|合格:ごうかく|満点:まんてん|本当:ほんとう|事実:じじつ|嘘:うそ|秘密:ひみつ|約束:やくそく|規則:きそく|常識:じょうしき|価値:かち|利益:りえき|損害:そんがい|お金:おかね|財産:ざいさん|不平:ふへい|不満:ふまん|不安:ふあん|心配:しんぱい|恐怖:きょうふ|驚き:おどろき|喜び:よろこび|悲しみ:かなしみ|怒り:いかり|笑顔:えがお|涙:なみだ|表情:ひょうじょう|顔色:かおいろ|声:こえ|話:はなし|会話:かいわ|議論:ぎろん|質問:しつもん|返事:へんじ|回答:かいとう|言い訳:いいわけ|批判:ひはん|非難:ひなん|反省:はんせい|後悔:こうかい|我慢:がまん|遠慮:えんりょ|油断:ゆだん|緊張:きんちょう|安心:あんしん|満足:まんぞく|期待:きたい|希望:きぼう|理想:りそう|現実:げんじつ|特徴:とくちょう|性質:せいしつ|性格:せいかく|才能:さいのう|実力:じつりょく|自信:じしん|誇り:ほこり|名誉:めいよ|立場:たちば|責任:せきにん|義務:ぎむ|権利:けんり|自由:じゆう|平等:びょうどう|平和:へいわ|戦争:せんそう|事件:じけん|事故:じこ|危険:きけん|安全:あんぜん|問題点:もんだいてん|解決:かいけつ|対策:たいさく|確認:かくにん|注意:ちゅうい|必要:ひつよう|重要:じゅうよう|大切:たいせつ|特別:とくべつ|普通:ふつう|当たり前:あたりまえ|偶然:ぐうぜん|必然:ひつぜん|具体的:ぐたいてき|抽象的:ちゅうしょうてき|客観的:きゃっかんてき|主観的:しゅかんてき|相対的:そうたいてき|絶対的:ぜったいてき|積極的:せっきょくてき|消極的:しょうきょくてき|肯定的:こうていてき|否定的:ひていてき|野蛮:やばん|粗野:そや|乱暴:らんぼう|不幸:ふこう|苦労話:くろうばなし|損失:そんしつ|兄弟:きょうだい|関心事:かんしんじ|プロ野球:ぷろやきゅう|出来杉君:できすぎくん|市長:しちょう|挨拶:あいさつ|怪訝:けげん|不審:ふしん|吟味:ぎんみ|偽善:ぎぜん|善人:ぜんにん|注目:ちゅうもく|忠告:ちゅうこく|行動:こうどう|途方:とほう|手立:てだ|諸刃:もろは|剣:つるぎ|原子力:げんしりょく|宿題:しゅくだい|一線:いっせん|境界:きょうかい|商品:しょうひん|画期的:かっきてき|新製品:しんせいひん|冗談:じょうだん|焦燥:しょうそう|焦燥感:しょうそうかん|遅刻:ちこく|次:つぎ|文:ぶん|入:はい|選:えら|表:あらわ|最:もっと|大正解:だいせいかい|読:よ|覚:おぼ";
+
+        async function initApp() {
+            const statusEl = document.getElementById('loading-status');
+            const barEl = document.getElementById('loading-bar');
+            const errorEl = document.getElementById('loading-error');
+
+            try {
+                // 内蔵辞書の登録
+                CORE_RUBY_RAW.split('|').forEach(pair => {
+                    const idx = pair.indexOf(':');
+                    if (idx > 0) {
+                        customRubyDict.set(pair.slice(0, idx), pair.slice(idx + 1));
+                    }
+                });
+
+                statusEl.textContent = 'words.json を読み込んでいます...';
+                barEl.style.width = '50%';
+
+                const candidateUrls = [
+                    './words.json',
+                    'words.json',
+                    window.location.pathname.replace(/\/[^\/]*$/, '/') + 'words.json'
+                ];
+
+                let rawText = null;
+                for (const url of candidateUrls) {
+                    try {
+                        const res = await fetch(url, { cache: 'no-store' });
+                        if (res.ok) {
+                            const txt = await res.text();
+                            if (txt && txt.trim().startsWith('[')) {
+                                rawText = txt;
+                                break;
+                            }
+                        }
+                    } catch (fetchErr) {}
+                }
+
+                // GitHub Pages上に words.json があればそれを使用し、プレビュー環境等の場合は内蔵フォールバックを使用
+                if (!rawText) {
+                    rawText = document.getElementById('fallback-json-data').textContent;
+                }
+
+                statusEl.textContent = '問題データを準備しています...';
+                barEl.style.width = '85%';
+
+                const cleanJsonText = rawText.replace(/^\uFEFF/, '').trim();
+                const rawJson = JSON.parse(cleanJsonText);
+
+                // 2,283件をミリ秒単位で格納（出題されるまで正規表現解析を遅延させることでChromeのフリーズを防止）
+                fastLoadWordsJson(rawJson);
+
+                if (allWordsPool.length < 4) {
+                    throw new Error(`有効な問題データが ${allWordsPool.length} 件しかありません。`);
+                }
+
+                rebuildSortedDictKeys();
+                barEl.style.width = '100%';
+
+                document.getElementById('total-pool-count').textContent = allWordsPool.length;
+                resetUnusedPool();
+                startNewRound();
+
+            } catch (err) {
+                console.error(err);
+                errorEl.classList.remove('hidden');
+                errorEl.innerHTML = `<div><strong>読み込みエラー:</strong><br>${err.message}</div>`;
+            }
+        }
+
+        function rebuildSortedDictKeys() {
+            sortedDictKeys = Array.from(customRubyDict.keys())
+                .filter(k => k && /[一-龠々〆ヵヶ]/.test(k))
+                .sort((a, b) => b.length - a.length);
+        }
+
+        function fastLoadWordsJson(rawData) {
+            const list = Array.isArray(rawData) ? rawData : [];
+            allWordsPool = [];
+
+            for (let idx = 0; idx < list.length; idx++) {
+                const item = list[idx];
+                if (!item || typeof item !== 'object') continue;
+                const rawWord = String(item.word || '').trim();
+                const rawMeaning = String(item.meaning || '').trim();
+                const rawExample = String(item.example || '').trim();
+
+                if (!rawWord || !rawMeaning) continue;
+                if (rawWord === '語彙' && rawMeaning === '意味') continue;
+
+                const cleanWord = rawWord.replace(/[（\(].*?[）\)]/g, '').replace(/。+$/, '').trim();
+
+                allWordsPool.push({
+                    id: idx,
+                    rawWord: rawWord,
+                    cleanWord: cleanWord,
+                    rawMeaning: rawMeaning,
+                    rawExample: rawExample,
+                    parsed: false
+                });
+            }
+        }
+
+        function ensureItemParsed(item) {
+            if (item.parsed) return item;
+
+            const parsed = parseWordAndParentheses(item.rawWord);
+            extractInlineReadingsFromText(item.rawMeaning);
+            extractInlineReadingsFromText(item.rawExample);
+
+            item.preRubyHtml = parsed.preRubyHtml;
+            item.extractedReadings = parsed.readings;
+            item.altForms = parsed.altForms;
+            item.meaning = item.rawMeaning.replace(/[（\(]([ぁ-んァ-ヶー]+)[）\)]/g, '');
+            item.example = item.rawExample.replace(/^「+/, '').replace(/」+$/, '').replace(/[（\(]([ぁ-んァ-ヶー]+)[）\)]/g, '').trim();
+            item.parsed = true;
+
+            return item;
+        }
+
+        function extractInlineReadingsFromText(text) {
+            if (!text || (!text.includes('（') && !text.includes('('))) return;
+            const regex = /([一-龠々〆ヵヶ]+)[（\(]([ぁ-んァ-ヶー]+)[）\)]/g;
+            let m;
+            while ((m = regex.exec(text)) !== null) {
+                if (m[1] && m[2]) {
+                    customRubyDict.set(m[1], katakanaToHiragana(m[2]));
+                }
+            }
+        }
+
+        function parseWordAndParentheses(rawWord) {
+            let cleanWord = rawWord;
+            let preRubyHtml = rawWord;
+            const readings = [];
+            const altForms = [];
+
+            const inlineRubyRegex = /([一-龠々〆ヵヶ]+)[（\(]([ぁ-んァ-ヶー・]+)[）\)]/g;
+            if (inlineRubyRegex.test(rawWord)) {
+                preRubyHtml = rawWord.replace(inlineRubyRegex, (match, kanji, reading) => {
+                    const hira = katakanaToHiragana(reading);
+                    readings.push(hira);
+                    customRubyDict.set(kanji, hira);
+                    return `<ruby>${kanji}<rt>${hira}</rt></ruby>`;
+                });
+            }
+
+            const parenRegex = /[（\(](.*?)[）\)]/g;
+            let m;
+            while ((m = parenRegex.exec(rawWord)) !== null) {
+                const content = m[1].trim();
+                if (/^[ぁ-んァ-ヶー]+$/.test(content)) {
+                    readings.push(katakanaToHiragana(content));
+                } else if (content) {
+                    altForms.push(content);
+                }
+            }
+
+            cleanWord = rawWord.replace(/[（\(].*?[）\)]/g, '').replace(/。+$/, '').trim();
+            preRubyHtml = preRubyHtml.replace(/[（\(].*?[）\)]/g, '').replace(/。+$/, '').trim();
+
+            if (readings.length === 1 && !preRubyHtml.includes('<ruby>')) {
+                const fullReading = readings[0];
+                const kanjiVerbMatch = cleanWord.match(/^([一-龠々〆ヵヶ]+)([ぁ-ん]*)$/);
+                if (kanjiVerbMatch) {
+                    const kPart = kanjiVerbMatch[1];
+                    const okuri = kanjiVerbMatch[2];
+                    if (okuri && fullReading.endsWith(okuri) && fullReading.length > okuri.length) {
+                        const kReading = fullReading.slice(0, fullReading.length - okuri.length);
+                        customRubyDict.set(kPart, kReading);
+                        preRubyHtml = `<ruby>${kPart}<rt>${kReading}</rt></ruby>${okuri}`;
+                    } else if (!okuri) {
+                        customRubyDict.set(kPart, fullReading);
+                        preRubyHtml = `<ruby>${kPart}<rt>${fullReading}</rt></ruby>`;
+                    }
+                }
+            }
+
+            return { cleanWord, preRubyHtml, readings, altForms };
+        }
+
+        function katakanaToHiragana(str) {
+            return str.replace(/[\u30a1-\u30f6]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60));
+        }
+
+        function hiraganaToKatakana(str) {
+            return str.replace(/[\u3041-\u3096]/g, m => String.fromCharCode(m.charCodeAt(0) + 0x60));
+        }
+
+        function applyBuiltinRubyToPlainSegment(segment) {
+            if (!segment || !/[一-龠々〆ヵヶ]/.test(segment)) return segment;
+            let work = segment;
+            const replacements = [];
+
+            for (let i = 0; i < sortedDictKeys.length; i++) {
+                const key = sortedDictKeys[i];
+                if (work.includes(key)) {
+                    const reading = customRubyDict.get(key);
+                    if (reading) {
+                        const token = `\uE000${replacements.length}\uE001`;
+                        replacements.push(`<ruby>${key}<rt>${reading}</rt></ruby>`);
+                        work = work.split(key).join(token);
+                        if (!/[一-龠々〆ヵヶ]/.test(work)) break;
+                    }
+                }
+            }
+            return work.replace(/\uE000(\d+)\uE001/g, (_, idx) => replacements[Number(idx)]);
+        }
+
+        function addFuriganaToAllKanji(text) {
+            if (!text) return '';
+            const BLANK_TOKEN = '___QUIZ_BLANK_BOX___';
+            let workText = String(text);
+
+            workText = workText.replace(/([一-龠々〆ヵヶ]+)[（\(]([ぁ-んァ-ヶー]+)[）\)]/g, (_, k, r) => {
+                const hira = katakanaToHiragana(r);
+                customRubyDict.set(k, hira);
+                return `<ruby>${k}<rt>${hira}</rt></ruby>`;
+            });
+
+            workText = workText.replace(/【\s*[？\?]\s*】/g, BLANK_TOKEN);
+
+            const parts = workText.split(/(<ruby>.*?<\/ruby>|<[^>]+>)/g);
+            workText = parts.map(part => part.startsWith('<') ? part : applyBuiltinRubyToPlainSegment(part)).join('');
+
+            return workText.replace(new RegExp(BLANK_TOKEN, 'g'), '<span class="blank-box">【　？　】</span>');
+        }
+
+        function formatWordChoiceWithRuby(wordObj) {
+            ensureItemParsed(wordObj);
+            const target = wordObj.cleanWord;
+            if (!/[一-龠々〆ヵヶ]/.test(target)) return target;
+            const strippedPre = wordObj.preRubyHtml.replace(/<ruby>.*?<\/ruby>/g, '');
+            if (wordObj.preRubyHtml.includes('<ruby>') && !/[一-龠々〆ヵヶ]/.test(strippedPre)) {
+                return wordObj.preRubyHtml;
+            }
+            return addFuriganaToAllKanji(wordObj.preRubyHtml || target);
+        }
+
+        function getHiraganaReadingSync(text) {
+            if (!text) return '';
+            if (/^[ぁ-んァ-ヶー]+$/.test(text)) return katakanaToHiragana(text);
+            if (customRubyDict.has(text)) return customRubyDict.get(text);
+            return '';
+        }
+
+        function escapeRegExp(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function maskTargetWordInSentence(sentence, wordObj) {
+            if (!sentence) return '';
+            ensureItemParsed(wordObj);
+
+            let masked = sentence;
+            const baseClean = wordObj.cleanWord.replace(/^[〜～・]+/, '').trim();
+            const candidates = new Set([baseClean, ...(wordObj.altForms || [])]);
+
+            baseClean.split('・').forEach(p => { if (p.trim()) candidates.add(p.trim()); });
+            if (baseClean.includes('、')) candidates.add(baseClean.replace(/、/g, ''));
+
+            const regexPatterns = [];
+
+            for (const cand of candidates) {
+                if (!cand) continue;
+                regexPatterns.push(escapeRegExp(cand));
+
+                for (const suffix of ['する', 'だ', 'な', 'に', 'と', 'たる', 'とした', 'として']) {
+                    if (cand.endsWith(suffix) && cand.length > suffix.length) {
+                        const stem = cand.slice(0, -suffix.length);
+                        if (stem.length >= 2) {
+                            regexPatterns.push(escapeRegExp(stem) + '(?:する|した|して|し|せ|さ|せず|しろ|だ|な|に|と|の|たる|とした|として)?');
+                        }
+                    }
+                }
+
+                if (/[ぁ-ん]$/.test(cand) && cand.length >= 2) {
+                    const stem1 = cand.slice(0, -1);
+                    if (stem1.length >= 1 && /[一-龠々〆ヵヶ]/.test(stem1)) {
+                        regexPatterns.push(escapeRegExp(stem1) + '[ぁ-ん]{0,5}');
+                    } else if (stem1.length >= 3) {
+                        regexPatterns.push(escapeRegExp(stem1) + '[ぁ-ん]{0,4}');
+                    }
+                    if (/[ぁ-ん]{2}$/.test(cand) && cand.length >= 4) {
+                        const stem2 = cand.slice(0, -2);
+                        if (stem2.length >= 2) regexPatterns.push(escapeRegExp(stem2) + '[ぁ-ん]{0,5}');
+                    }
+                }
+
+                const kanjiChunks = cand.match(/[一-龠々〆ヵヶ]{2,}/g) || [];
+                kanjiChunks.forEach(kc => {
+                    regexPatterns.push(escapeRegExp(kc) + '(?:する|した|して|的な|的|な|に|だ)?');
+                });
+            }
+
+            const hiraReading = (wordObj.extractedReadings && wordObj.extractedReadings[0]) || getHiraganaReadingSync(baseClean);
+            if (hiraReading && hiraReading.length >= 3) {
+                const kataReading = hiraganaToKatakana(hiraReading);
+                regexPatterns.push(escapeRegExp(hiraReading));
+                regexPatterns.push(escapeRegExp(kataReading));
+            }
+
+            const uniquePatterns = Array.from(new Set(regexPatterns)).sort((a, b) => b.length - a.length);
+            for (let i = 0; i < uniquePatterns.length; i++) {
+                masked = masked.replace(new RegExp(uniquePatterns[i], 'g'), '【　？　】');
+            }
+
+            if (!masked.includes('【　？　】') && baseClean.length >= 5) {
+                const prefix4 = baseClean.slice(0, 4);
+                if (masked.includes(prefix4)) {
+                    masked = masked.replace(new RegExp(escapeRegExp(prefix4) + '[^、。」]*', 'g'), '【　？　】');
+                }
+            }
+
+            return masked.replace(/(【\s*[？\?]\s*】)+/g, '【　？　】');
+        }
+
+        function buildQuizQuestion(targetItem, allPool) {
+            ensureItemParsed(targetItem);
+
+            const distractors = [];
+            let attempts = 0;
+            while (distractors.length < 2 && attempts < 100) {
+                attempts++;
+                const candidate = allPool[Math.floor(Math.random() * allPool.length)];
+                if (
+                    candidate.cleanWord !== targetItem.cleanWord &&
+                    candidate.rawMeaning !== targetItem.rawMeaning &&
+                    !distractors.some(d => d.cleanWord === candidate.cleanWord)
+                ) {
+                    ensureItemParsed(candidate);
+                    distractors.push(candidate);
+                }
+            }
+
+            rebuildSortedDictKeys();
+
+            const choices = [targetItem, ...distractors];
+            shuffleArray(choices);
+
+            let questionText = '';
+            let badgeText = '';
+            let cleanMeaning = maskTargetWordInSentence(targetItem.meaning, targetItem).replace(/。$/, '');
+            const hasExample = targetItem.example && targetItem.example.length >= 3;
+
+            if (hasExample) {
+                const maskedEx = maskTargetWordInSentence(targetItem.example, targetItem);
+                if (maskedEx.includes('【　？　】')) {
+                    badgeText = '📝 例文あなうめクイズ';
+                    questionText = `つぎの文の【　？　】に入る言葉をえらぼう！<br>『${maskedEx}』<br><span class="text-base md:text-lg text-indigo-700 font-bold mt-2 inline-block">（ヒント：${cleanMeaning}）</span>`;
+                } else {
+                    const situation = FUN_SITUATIONS[Math.floor(Math.random() * FUN_SITUATIONS.length)];
+                    badgeText = '🌟 ことばの意味・使い方クイズ';
+                    questionText = `${situation}<br>「${cleanMeaning}」という意味を持つ【　？　】に入る言葉はどれかな？<br><span class="text-base md:text-lg text-slate-600 mt-1 inline-block">（似た場面の例：『${maskedEx}』）</span>`;
+                }
+            } else {
+                const situation = FUN_SITUATIONS[Math.floor(Math.random() * FUN_SITUATIONS.length)];
+                badgeText = '💡 ことばの意味クイズ';
+                questionText = `${situation}<br>「${cleanMeaning}」という意味を表す【　？　】に入る言葉は、つぎの3つのうちどれかな？`;
+            }
+
+            for (const c of choices) {
+                if (c.cleanWord === targetItem.cleanWord) continue;
+                if (c.cleanWord.length >= 2 && questionText.includes(c.cleanWord)) {
+                    questionText = questionText.replace(new RegExp(escapeRegExp(c.cleanWord), 'g'), '〇〇');
+                }
+            }
+
+            return { target: targetItem, choices, questionText, badgeText };
+        }
+
+        function resetUnusedPool() {
+            unusedIndices = Array.from({ length: allWordsPool.length }, (_, i) => i);
+            shuffleArray(unusedIndices);
+        }
+
+        function shuffleArray(arr) {
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+        }
+
+        function startNewRound() {
+            const roundCount = Math.min(QUESTIONS_PER_ROUND, allWordsPool.length);
+            if (unusedIndices.length < roundCount) resetUnusedPool();
+
+            const selectedIndices = unusedIndices.splice(0, roundCount);
+            currentQuizSet = selectedIndices.map(idx => buildQuizQuestion(allWordsPool[idx], allWordsPool));
+            currentQuestionIndex = 0;
+            currentScore = 0;
+
+            document.getElementById('loading-screen').classList.add('hidden');
+            document.getElementById('final-screen').classList.add('hidden');
+            document.getElementById('quiz-screen').classList.remove('hidden');
+
+            updateHeaderStats();
+            renderCurrentQuestion();
+        }
+
+        function updateHeaderStats() {
+            const totalQ = currentQuizSet.length || QUESTIONS_PER_ROUND;
+            document.getElementById('score-display').textContent = currentScore;
+            document.getElementById('current-q-num').textContent = currentQuestionIndex + 1;
+            document.getElementById('max-q-num').textContent = totalQ;
+            document.getElementById('remaining-pool-count').textContent = unusedIndices.length;
+            const progressPercent = ((currentQuestionIndex + 1) / totalQ) * 100;
+            document.getElementById('quiz-progress-bar').style.width = `${progressPercent}%`;
+        }
+
+        function renderCurrentQuestion() {
+            isQuestionAnswered = false;
+            const qData = currentQuizSet[currentQuestionIndex];
+            const explanationArea = document.getElementById('explanation-area');
+            const choicesContainer = document.getElementById('choices-container');
+
+            explanationArea.classList.add('hidden');
+            choicesContainer.innerHTML = '';
+            updateHeaderStats();
+
+            document.getElementById('question-type-badge').innerHTML = addFuriganaToAllKanji(qData.badgeText);
+            document.getElementById('question-text').innerHTML = addFuriganaToAllKanji(qData.questionText);
+
+            const labels = ['①', '②', '③'];
+            for (let i = 0; i < qData.choices.length; i++) {
+                const choiceItem = qData.choices[i];
+                const rubyWordHtml = formatWordChoiceWithRuby(choiceItem);
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'choice-btn w-full text-left p-4 md:p-5 rounded-2xl border-2 border-slate-200 bg-white hover:border-indigo-400 hover:bg-indigo-50/60 active:scale-[0.99] font-black text-xl md:text-2xl text-slate-800 shadow-sm transition flex items-center gap-4 group cursor-pointer';
+                btn.innerHTML = `
+                    <span class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white flex items-center justify-center text-lg font-black shrink-0 transition pointer-events-none">${labels[i]}</span>
+                    <span class="choice-word-text flex-1 leading-[2.0] pointer-events-none">${rubyWordHtml}</span>
+                `;
+                btn.addEventListener('click', () => handleChoiceSelect(i));
+                choicesContainer.appendChild(btn);
+            }
+        }
+
+        function handleChoiceSelect(selectedIndex) {
+            if (isQuestionAnswered) return;
+            isQuestionAnswered = true;
+
+            try {
+                const qData = currentQuizSet[currentQuestionIndex];
+                const selectedItem = qData.choices[selectedIndex];
+                const isCorrect = (selectedItem.id === qData.target.id);
+
+                const allButtons = document.querySelectorAll('#choices-container .choice-btn');
+                allButtons.forEach((btn, idx) => {
+                    btn.disabled = true;
+                    btn.classList.remove('hover:border-indigo-400', 'hover:bg-indigo-50/60', 'cursor-pointer');
+                    const item = qData.choices[idx];
+                    if (item.id === qData.target.id) {
+                        btn.className = 'choice-btn w-full text-left p-4 md:p-5 rounded-2xl border-2 border-emerald-500 bg-emerald-50 font-black text-xl md:text-2xl text-emerald-900 shadow-md flex items-center gap-4';
+                    } else if (idx === selectedIndex && !isCorrect) {
+                        btn.className = 'choice-btn w-full text-left p-4 md:p-5 rounded-2xl border-2 border-rose-400 bg-rose-50 font-black text-xl md:text-2xl text-rose-900 opacity-85 flex items-center gap-4';
+                    } else {
+                        btn.classList.add('opacity-50');
+                    }
+                });
+
+                const feedbackBox = document.getElementById('feedback-box');
+                const resultIcon = document.getElementById('result-icon');
+                const resultTitle = document.getElementById('result-title');
+
+                if (isCorrect) {
+                    currentScore++;
+                    document.getElementById('score-display').textContent = currentScore;
+                    feedbackBox.className = 'rounded-2xl p-5 mb-6 flex items-start gap-4 border-2 bg-emerald-50/90 border-emerald-300';
+                    resultIcon.textContent = getCelebrationEmoji(currentScore);
+                    resultTitle.className = 'text-xl md:text-2xl font-black mb-1 text-emerald-700';
+                    resultTitle.innerHTML = addFuriganaToAllKanji(getCelebrationTitle(currentScore));
+                    triggerEscalatingCelebration(currentScore);
+                } else {
+                    feedbackBox.className = 'rounded-2xl p-5 mb-6 flex items-start gap-4 border-2 bg-rose-50/90 border-rose-300';
+                    resultIcon.textContent = '💡';
+                    resultTitle.className = 'text-xl md:text-2xl font-black mb-1 text-rose-700';
+                    resultTitle.innerHTML = addFuriganaToAllKanji('おしい！ここで覚えちゃおう！');
+                    playWrongSound();
+                }
+
+                // 問題文の【　？　】に正解の言葉を当てはめて表示
+                const correctRuby = formatWordChoiceWithRuby(qData.target);
+                const filledBadge = `<span class="inline-block mx-1 px-3 py-0.5 rounded-xl bg-emerald-100 border-2 border-emerald-500 text-emerald-800 font-black shadow-sm">${correctRuby}</span>`;
+                const filledQuestionHtml = addFuriganaToAllKanji(qData.questionText).replace(
+                    /<span class="blank-box">【　？　】<\/span>/g,
+                    filledBadge
+                );
+                document.getElementById('question-text').innerHTML = filledQuestionHtml;
+
+                document.getElementById('correct-word-display').innerHTML = correctRuby;
+                document.getElementById('explanation-meaning').innerHTML = addFuriganaToAllKanji(qData.target.meaning);
+
+                const exBox = document.getElementById('explanation-example-box');
+                const exText = document.getElementById('explanation-example');
+                if (qData.target.example) {
+                    exBox.classList.remove('hidden');
+                    exText.innerHTML = addFuriganaToAllKanji(`「${qData.target.example}」`);
+                } else {
+                    exBox.classList.add('hidden');
+                }
+
+                const nextBtnText = document.getElementById('next-btn-text');
+                if (currentQuestionIndex + 1 >= currentQuizSet.length) {
+                    nextBtnText.innerHTML = '👑 <ruby>結果発表<rt>けっかはっぴょう</rt></ruby>をみる';
+                } else {
+                    nextBtnText.innerHTML = 'つぎの<ruby>問題<rt>もんだい</rt></ruby>へすすむ';
+                }
+            } catch (err) {
+                console.error('Answer handling error:', err);
+            } finally {
+                const explanationArea = document.getElementById('explanation-area');
+                explanationArea.classList.remove('hidden');
+                explanationArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        function getCelebrationEmoji(score) {
+            if (score === 1) return '🎉';
+            if (score === 2) return '🎊';
+            if (score <= 4) return '🌟';
+            if (score <= 7) return '🚀';
+            return '👑';
+        }
+
+        function getCelebrationTitle(score) {
+            if (score === 1) return '大正解！やったね！';
+            if (score === 2) return '2問正解！いい調子！';
+            if (score === 3) return '3問正解！素晴らしいひらめき！';
+            if (score === 4) return '4問正解！絶好調だね！！';
+            if (score === 5) return '5問正解！すごすぎる大活躍！！';
+            if (score <= 7) return `${score}問正解！天才的な語彙力だ！！`;
+            if (score <= 9) return `${score}問正解！無敵のクイズマスター！！`;
+            return '10問全問正解！！伝説のグランドチャンピオン！！';
+        }
+
+        function triggerEscalatingCelebration(score) {
+            playSuccessSound(score);
+            if (typeof confetti !== 'function') return;
+
+            try {
+                if (score === 1) {
+                    confetti({ particleCount: 45, spread: 60, origin: { y: 0.65 } });
+                } else if (score === 2) {
+                    confetti({ particleCount: 55, angle: 60, spread: 55, origin: { x: 0, y: 0.65 } });
+                    confetti({ particleCount: 55, angle: 120, spread: 55, origin: { x: 1, y: 0.65 } });
+                } else if (score === 3) {
+                    confetti({
+                        particleCount: 85,
+                        spread: 100,
+                        origin: { y: 0.4 },
+                        shapes: ['star'],
+                        colors: ['#FFD700', '#FFA500', '#FF4500', '#00BFFF']
+                    });
+                } else if (score === 4) {
+                    triggerScreenShake();
+                    for (let i = 0; i < 3; i++) {
+                        setTimeout(() => {
+                            confetti({
+                                particleCount: 75,
+                                startVelocity: 35,
+                                spread: 360,
+                                origin: { x: 0.2 + i * 0.3, y: 0.35 }
+                            });
+                        }, i * 200);
+                    }
+                } else {
+                    triggerScreenShake();
+                    const duration = Math.min(1200 + score * 250, 3500);
+                    const end = Date.now() + duration;
+                    (function frame() {
+                        confetti({ particleCount: 6 + Math.floor(score / 2), angle: 60, spread: 65, origin: { x: 0, y: 0.6 } });
+                        confetti({ particleCount: 6 + Math.floor(score / 2), angle: 120, spread: 65, origin: { x: 1, y: 0.6 } });
+                        if (Date.now() < end) requestAnimationFrame(frame);
+                    })();
+                }
+            } catch (e) {}
+        }
+
+        function triggerScreenShake() {
+            const quizScreen = document.getElementById('quiz-screen');
+            quizScreen.classList.remove('shake-effect');
+            void quizScreen.offsetWidth;
+            quizScreen.classList.add('shake-effect');
+        }
+
+        function initAudio() {
+            if (!audioCtx) {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioContextClass) audioCtx = new AudioContextClass();
+            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playSuccessSound(score) {
+            try {
+                initAudio();
+                if (!audioCtx) return;
+                const now = audioCtx.currentTime;
+                const baseNotes = [523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98];
+                const noteCount = Math.min(2 + score, baseNotes.length);
+                for (let i = 0; i < noteCount; i++) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = score >= 4 ? 'triangle' : 'sine';
+                    osc.frequency.setValueAtTime(baseNotes[i], now + i * 0.08);
+                    gain.gain.setValueAtTime(0.18, now + i * 0.08);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.08 + 0.35);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + i * 0.08);
+                    osc.stop(now + i * 0.08 + 0.35);
+                }
+            } catch (e) {}
+        }
+
+        function playWrongSound() {
+            try {
+                initAudio();
+                if (!audioCtx) return;
+                const now = audioCtx.currentTime;
+                [240, 200].forEach((freq, idx) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.15);
+                    gain.gain.setValueAtTime(0.1, now + idx * 0.15);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.15 + 0.22);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(now + idx * 0.15);
+                    osc.stop(now + idx * 0.15 + 0.22);
+                });
+            } catch (e) {}
+        }
+
+        document.getElementById('next-btn').addEventListener('click', () => {
+            currentQuestionIndex++;
+            if (currentQuestionIndex < currentQuizSet.length) {
+                renderCurrentQuestion();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                showFinalScreen();
+            }
+        });
+
+        function showFinalScreen() {
+            document.getElementById('quiz-screen').classList.add('hidden');
+            const finalScreen = document.getElementById('final-screen');
+            finalScreen.classList.remove('hidden');
+
+            const totalQ = currentQuizSet.length || QUESTIONS_PER_ROUND;
+            document.getElementById('final-score').textContent = currentScore;
+            document.getElementById('final-max').textContent = totalQ;
+
+            let msg = '';
+            if (currentScore === totalQ) {
+                document.getElementById('final-emoji').textContent = '👑';
+                msg = '全問正解パーフェクト達成！！すべての問題を見事にクリアしました！';
+            } else if (currentScore >= 7) {
+                document.getElementById('final-emoji').textContent = '🏆';
+                msg = 'すばらしい大活躍でした！この調子でどんどん言葉をマスターしよう！';
+            } else {
+                document.getElementById('final-emoji').textContent = '🌱';
+                msg = '最後までよくがんばりました！もう一度チャレンジして記録をのばそう！';
+            }
+            document.getElementById('final-message').innerHTML = addFuriganaToAllKanji(msg);
+
+            if (currentScore > 0) triggerEscalatingCelebration(Math.max(currentScore, 3));
+        }
+
+        document.getElementById('retry-btn').addEventListener('click', () => {
+            startNewRound();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        document.getElementById('replay-celebration-btn').addEventListener('click', () => {
+            triggerEscalatingCelebration(Math.max(currentScore, 6));
+        });
+
+        // アプリ起動
+        initApp();
+    </script>
+</body>
+</html>
